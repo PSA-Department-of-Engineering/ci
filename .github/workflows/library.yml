@@ -1,0 +1,80 @@
+# Reusable release + publish for library monorepos in this org (npm and/or Python
+# packages in one repo). A thin per-repo caller invokes it on push to main.
+#
+# release-please reads the calling repo's release-please-config.json and
+# .release-please-manifest.json, maintains a per-package "release PR" from
+# Conventional Commits, and on merge cuts the tag (<pkg>-vX.Y.Z), the GitHub release,
+# and the per-package CHANGELOG. Any released package that carries a package.json is
+# then published to GitHub Packages; Python packages have no upload step (consumers
+# pip-install the git tag, per csd-library ADR-0001).
+#
+# This is the library counterpart to build.yml (which builds + pushes image / chart /
+# docs artifacts for deployable services). Libraries use release-please rather than
+# semantic-release because one repo here carries several independently-versioned
+# packages across two ecosystems, which semantic-release does not model; see
+# csd-library ADR-0002.
+name: library
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: Node version used to build and publish npm packages.
+        type: string
+        default: '22'
+      npm-scope:
+        description: npm scope mapped to GitHub Packages (the owning org login, lowercased, with leading @).
+        type: string
+        default: '@psa-department-of-engineering'
+      runner:
+        description: Runner to execute on. Defaults to a GitHub-hosted runner so library releases do not depend on homelab uptime (ADR-0001); pass an ARC scale set to use in-cluster runners.
+        type: string
+        default: ubuntu-latest
+
+permissions:
+  contents: write        # tags + GitHub releases (release-please)
+  pull-requests: write   # the release PR (release-please)
+  packages: write        # npm publish to GitHub Packages
+
+jobs:
+  release:
+    runs-on: ${{ inputs.runner }}
+    outputs:
+      paths_released: ${{ steps.release.outputs.paths_released }}
+    steps:
+      - name: release-please
+        id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ github.token }}
+
+  # Fans out over the packages release-please actually cut this run. Empty / "[]"
+  # whenever the push only opened or updated a release PR (no release), so this job
+  # is skipped until a release PR is merged.
+  publish-npm:
+    needs: release
+    if: needs.release.outputs.paths_released != '' && needs.release.outputs.paths_released != '[]'
+    runs-on: ${{ inputs.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        path: ${{ fromJSON(needs.release.outputs.paths_released) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          registry-url: 'https://npm.pkg.github.com'
+          scope: ${{ inputs.npm-scope }}
+      - name: Publish ${{ matrix.path }} to GitHub Packages (Python packages have no package.json and are skipped — the tag is their release)
+        working-directory: ${{ matrix.path }}
+        env:
+          NODE_AUTH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -f package.json ]; then
+            echo "Publishing ${{ matrix.path }}"
+            npm ci
+            npm publish
+          else
+            echo "${{ matrix.path }} has no package.json (Python package); the git tag is the release, nothing to publish."
+          fi
