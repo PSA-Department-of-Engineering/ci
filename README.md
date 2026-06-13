@@ -23,7 +23,7 @@ jobs:
     secrets: inherit
 ```
 
-Inputs: `runner` (default `arc-dind`), `image-name` (default repo name), `docs-base`.
+Inputs: `runner` (default `arc-dind`), `image-name` (default repo name), `docs-base` (default `/apps/<image-name>`; the platform portal passes `/`).
 
 ### `library.yml` — library monorepos
 
