@@ -3,13 +3,19 @@
 # A thin per-repo caller invokes this. It runs on the in-cluster ARC dind runners,
 # derives a SemVer from Conventional Commits with semantic-release (tag + GitHub
 # release), then builds and pushes whatever artifacts the repo ships to GHCR at
-# that version: the app image (devops/Dockerfile), the Helm chart (k8s/), and the
-# docs site (docs/Dockerfile). Each step is skipped when its input is absent, so the
+# that version: the app image(s) (devops/), the Helm chart (k8s/), and the docs
+# site (docs/Dockerfile). Each step is skipped when its input is absent, so the
 # platform repo (docs-only) and a full app share one workflow. CI never deploys:
 # promotion is ArgoCD Image Updater (ADR-022).
 #
-# First cut. The first real run will surface tweaks (a docs Dockerfile must accept
-# the DOCS_BASE build arg; the chart name comes from k8s/Chart.yaml). Refine against it.
+# App images come from devops/docker-compose.yml, a repo's single source of truth
+# for the images it ships (ADR-018): every service with a build: section is built
+# and pushed, named by its compose image:. So a one-image app and a multi-image app
+# (e.g. an API plus web frontends) share this workflow with no per-repo edits. A
+# repo with no compose falls back to a single devops/Dockerfile named <image-name>.
+#
+# GHCR repository names must be lowercase; an owner/repo may carry uppercase
+# (e.g. PSA-Department-of-Engineering), so every ref is lowercased before use.
 name: build
 
 on:
@@ -20,7 +26,7 @@ on:
         type: string
         default: arc-dind
       image-name:
-        description: GHCR image/chart base name. Defaults to the repo name.
+        description: GHCR base name for the docs image and the single-Dockerfile fallback. Defaults to the repo name.
         type: string
         default: ${{ github.event.repository.name }}
       docs-base:
@@ -36,7 +42,9 @@ jobs:
   release:
     runs-on: ${{ inputs.runner }}
     env:
-      IMG: ghcr.io/${{ github.repository_owner }}/${{ inputs.image-name }}
+      # ghcr.io/<owner>; lowercased at point of use (owner may carry uppercase).
+      REG: ghcr.io/${{ github.repository_owner }}
+      APP: ${{ inputs.image-name }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -70,30 +78,68 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
-      - name: Build and push image, chart, docs
+      - name: Build and push image(s), chart, docs
         if: steps.release.outputs.new_release_published == 'true'
         env:
           VERSION: ${{ steps.release.outputs.new_release_version }}
-          OWNER: ${{ github.repository_owner }}
-          APP: ${{ inputs.image-name }}
           DOCS_BASE: ${{ inputs.docs-base }}
         run: |
           set -euo pipefail
-          # App image: only repos that ship one (the platform repo has no devops/Dockerfile).
-          if [ -f devops/Dockerfile ]; then
-            docker build -f devops/Dockerfile -t "$IMG:$VERSION" .
-            docker push "$IMG:$VERSION"
+          REG="$(printf '%s' "$REG" | tr '[:upper:]' '[:lower:]')"
+          APP="$(printf '%s' "$APP" | tr '[:upper:]' '[:lower:]')"
+          export REG VERSION
+
+          # --- App image(s) ---
+          # devops/docker-compose.yml is the single source of truth for the images a
+          # repo ships (ADR-018). Build every service that has a build: section and
+          # push it as $REG/<compose image:>:$VERSION. The file is parsed, not run, so
+          # env_file entries (and a missing .env on a fresh checkout) never matter.
+          if [ -f devops/docker-compose.yml ]; then
+            npx -y js-yaml@4 devops/docker-compose.yml > /tmp/compose.json
+            cat > /tmp/gen-build.js <<'NODE'
+          const fs = require('fs'), path = require('path');
+          const reg = process.env.REG, version = process.env.VERSION;
+          const compose = JSON.parse(fs.readFileSync('/tmp/compose.json', 'utf8'));
+          const composeDir = 'devops'; // build.context is relative to the compose file's dir
+          const q = s => "'" + String(s).replace(/'/g, "'\\''") + "'";
+          const lines = ['set -euo pipefail'];
+          let n = 0;
+          for (const [name, svc] of Object.entries(compose.services || {})) {
+            if (!svc || !svc.build) continue;
+            const b = typeof svc.build === 'string' ? { context: svc.build } : svc.build;
+            const base = String(svc.image || name).split('/').pop().split(':')[0].toLowerCase();
+            const ctx = path.posix.join(composeDir, b.context || '.');
+            const dockerfile = path.posix.join(ctx, b.dockerfile || 'Dockerfile');
+            const args = Object.entries(b.args || {})
+              .map(([k, v]) => '--build-arg ' + q(k + '=' + (v == null ? '' : v)));
+            const tag = reg + '/' + base + ':' + version;
+            lines.push('echo "==> building ' + base + '"');
+            lines.push(['docker build', q(ctx), '-f', q(dockerfile), ...args, '-t', q(tag)].join(' '));
+            lines.push('docker push ' + q(tag));
+            n++;
+          }
+          if (n === 0) console.error('compose has no buildable services; no app image built');
+          fs.writeFileSync('/tmp/build-images.sh', lines.join('\n') + '\n');
+          console.error('image builds generated: ' + n);
+          NODE
+            node /tmp/gen-build.js
+            bash /tmp/build-images.sh
+          elif [ -f devops/Dockerfile ]; then
+            docker build -f devops/Dockerfile -t "$REG/$APP:$VERSION" .
+            docker push "$REG/$APP:$VERSION"
           fi
-          # Docs site: base path is /<app> by default, "/" for the platform's root portal.
+
+          # --- Docs site: base path /<app> by default, "/" for the platform portal. ---
           if [ -f docs/Dockerfile ]; then
             BASE="${DOCS_BASE:-/$APP}"
-            docker build -f docs/Dockerfile --build-arg DOCS_BASE="$BASE" -t "$IMG-docs:$VERSION" docs/
-            docker push "$IMG-docs:$VERSION"
-            docker tag "$IMG-docs:$VERSION" "$IMG-docs:latest"
-            docker push "$IMG-docs:latest"
+            docker build -f docs/Dockerfile --build-arg DOCS_BASE="$BASE" -t "$REG/$APP-docs:$VERSION" docs/
+            docker push "$REG/$APP-docs:$VERSION"
+            docker tag "$REG/$APP-docs:$VERSION" "$REG/$APP-docs:latest"
+            docker push "$REG/$APP-docs:latest"
           fi
-          # Helm chart: only repos that ship one (the platform deploys via platform/, not a chart).
+
+          # --- Helm chart (chart name comes from k8s/Chart.yaml). ---
           if [ -d k8s ]; then
             helm package k8s --version "$VERSION" --app-version "$VERSION" -d /tmp
-            helm push /tmp/*.tgz "oci://ghcr.io/$OWNER/charts"
+            helm push /tmp/*.tgz "oci://$REG/charts"
           fi
