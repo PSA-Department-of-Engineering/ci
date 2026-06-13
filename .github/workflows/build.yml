@@ -8,6 +8,14 @@
 # platform repo (docs-only) and a full app share one workflow. CI never deploys:
 # promotion is ArgoCD Image Updater (ADR-022).
 #
+# Before any release, a conformance job audits the repo against the REF-Homelab
+# section 4 app contract (devops/, k8s/, docs/ that honors DOCS_BASE, README sections,
+# .env.example, intent.yaml) and runs csd-intent on its intent.yaml. This is where the
+# platform's per-app repo-contract tests run — in the app's own CI, where its files are
+# checked out — since a platform CI runner has no sibling app clones. release `needs`
+# it, so a non-conformant repo is never tagged or published. The docs-only platform
+# portal is not an onboardable app and opts out with app-contract: false.
+#
 # App images come from devops/docker-compose.yml, a repo's single source of truth
 # for the images it ships (ADR-018): every service with a build: section is built
 # and pushed, named by its compose image:. So a one-image app and a multi-image app
@@ -33,13 +41,127 @@ on:
         description: Base path for the docs site. Empty defaults to /apps/<image-name>; the platform portal passes "/".
         type: string
         default: ''
+      app-contract:
+        description: >-
+          Audit the repo against the REF-Homelab section 4 app contract (and run
+          csd-intent on its intent.yaml) before releasing. Onboardable apps leave this
+          true; the docs-only platform portal sets it false.
+        type: boolean
+        default: true
 
 permissions:
   contents: write
   packages: write
 
 jobs:
+  # REF-Homelab section 4: the onboardable-app repo contract. The platform's own
+  # tests/test_repo_conformance.py checks this (INT-HOMELAB-002..009, 018) against
+  # sibling clones and pytest.skips when they are absent — a platform CI runner has
+  # none, so the authoritative gate lives HERE, in each app's own CI, where its files
+  # are actually checked out. release `needs` this, so a non-conformant repo is never
+  # tagged or published. The docs-only platform portal is not an onboardable app: it
+  # passes app-contract: false, which skips every step below. The job still runs and
+  # succeeds (no executed step fails), so its release proceeds.
+  conformance:
+    runs-on: ${{ inputs.runner }}
+    permissions:
+      contents: read
+    steps:
+      - if: ${{ inputs.app-contract }}
+        uses: actions/checkout@v4
+
+      - if: ${{ inputs.app-contract }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      # csd-intent is the audit CLI (PyYAML installs with it). Git-tag install from
+      # csd-library — the same pin the platform repo records in its pyproject.toml.
+      - if: ${{ inputs.app-contract }}
+        name: Install csd-intent
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            "csd-intent @ git+https://github.com/PSA-Department-of-Engineering/csd-library.git@csd-intent-v0.1.0#subdirectory=csd-intent"
+
+      # Mirror tests/test_repo_conformance.py: report every violation, then fail once,
+      # so a maintainer sees the whole gap in one run instead of one error at a time.
+      - if: ${{ inputs.app-contract }}
+        name: Audit repo against the REF-Homelab section 4 contract
+        run: |
+          set -uo pipefail
+          fail=0
+          bad() { echo "  x $1"; fail=1; }
+          echo "REF-Homelab section 4 app-repo contract:"
+
+          # devops/: one Dockerfile, a compose that builds FROM it, and no image-push
+          # script (publishing is CI's job, never a local script).
+          [ -f devops/Dockerfile ] || bad "missing devops/Dockerfile (INT-HOMELAB-002)"
+          if [ -f devops/docker-compose.yml ]; then
+            grep -q 'devops/Dockerfile' devops/docker-compose.yml \
+              || bad "devops/docker-compose.yml must build FROM devops/Dockerfile (INT-HOMELAB-003)"
+          else
+            bad "missing devops/docker-compose.yml (INT-HOMELAB-003)"
+          fi
+          if [ -d devops ]; then
+            push=$(find devops -maxdepth 1 -type f 2>/dev/null | grep -i push | grep -i image || true)
+            [ -z "$push" ] || bad "image-push script in devops/ (CI publishes; the repo only builds): ${push//$'\n'/ }(INT-HOMELAB-004)"
+          fi
+
+          # k8s/: a Helm chart, not loose manifests.
+          for f in Chart.yaml templates values.yaml; do
+            [ -e "k8s/$f" ] || bad "k8s/ is not a complete Helm chart, missing k8s/$f (INT-HOMELAB-005)"
+          done
+
+          # docs/: a deployable site that honors DOCS_BASE so it mounts under the portal
+          # prefix. astro `base` derives from DOCS_BASE, and the Dockerfile declares ARG
+          # DOCS_BASE and serves the built (flat) site UNDER that prefix.
+          if [ -d docs ]; then
+            [ -f docs/Dockerfile ] || bad "docs/ has no Dockerfile (INT-HOMELAB-006)"
+            cfg=$(ls docs/astro.config.* 2>/dev/null | head -1 || true)
+            if [ -n "$cfg" ]; then
+              { grep -q 'DOCS_BASE' "$cfg" && grep -Eq 'base[[:space:]]*:' "$cfg"; } \
+                || bad "docs/astro.config.* must derive Astro base from DOCS_BASE (INT-HOMELAB-018)"
+            else
+              bad "docs/ has no astro.config.* (not a Starlight/Astro site) (INT-HOMELAB-006)"
+            fi
+            if [ -f docs/Dockerfile ]; then
+              grep -q 'ARG DOCS_BASE' docs/Dockerfile \
+                || bad "docs/Dockerfile must declare ARG DOCS_BASE (INT-HOMELAB-018)"
+              grep -Eq 'html/?\$\{?DOCS_BASE\}?' docs/Dockerfile \
+                || bad "docs/Dockerfile must serve the built site under DOCS_BASE (INT-HOMELAB-018)"
+            fi
+          else
+            bad "missing docs/ (INT-HOMELAB-006)"
+          fi
+
+          # README contract sections (case-insensitive substring, matching the test).
+          if [ -f README.md ]; then
+            for s in "run with docker" "develop without docker" "layout"; do
+              grep -qi "$s" README.md || bad "README.md missing required section: '$s' (INT-HOMELAB-007)"
+            done
+          else
+            bad "missing README.md (INT-HOMELAB-007)"
+          fi
+
+          # Config contract and the CSD entry point.
+          [ -f .env.example ] || bad "missing .env.example (INT-HOMELAB-008)"
+          [ -f intent.yaml ] || bad "missing root intent.yaml (INT-HOMELAB-009)"
+
+          if [ "$fail" -ne 0 ]; then
+            echo "Repo violates the REF-Homelab section 4 contract (see the lines above)."
+            exit 1
+          fi
+          echo "  OK: section 4 contract satisfied"
+
+      # Audit the app's own intent.yaml: CSD-INTENT-01 schema + every active claim
+      # attested by a test marker somewhere in the repo (default --fail-on any).
+      - if: ${{ inputs.app-contract }}
+        name: Audit intent.yaml (csd-intent)
+        run: csd-intent .
+
   release:
+    needs: conformance
     runs-on: ${{ inputs.runner }}
     env:
       # ghcr.io/<owner>; lowercased at point of use (owner may carry uppercase).
@@ -67,7 +189,7 @@ jobs:
             "plugins": [
               "@semantic-release/commit-analyzer",
               "@semantic-release/release-notes-generator",
-              "@semantic-release/github"
+              ["@semantic-release/github", { "successComment": false, "failComment": false, "failTitle": false }]
             ]
           }
           JSON
@@ -131,6 +253,12 @@ jobs:
 
           # --- Docs site: base path /apps/<app> by default, "/" for the platform portal. ---
           if [ -f docs/Dockerfile ]; then
+            # The docs Projects index is generated from deploy-repos.yaml at build
+            # time (ADR-023). That registry lives at the repo root, above the docs/
+            # build context, so land a copy inside docs/ for the in-image prebuild
+            # (docs/scripts/gen-projects.mjs) to read. Only the platform repo ships
+            # this registry; app repos have none and skip it.
+            if [ -f deploy-repos.yaml ]; then cp deploy-repos.yaml docs/deploy-repos.yaml; fi
             BASE="${DOCS_BASE:-/apps/$APP}"
             docker build -f docs/Dockerfile --build-arg DOCS_BASE="$BASE" -t "$REG/$APP-docs:$VERSION" docs/
             docker push "$REG/$APP-docs:$VERSION"
