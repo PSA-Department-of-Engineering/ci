@@ -1,0 +1,99 @@
+# Reusable build + release for homelab repos (ADR-019, ADR-024).
+#
+# A thin per-repo caller invokes this. It runs on the in-cluster ARC dind runners,
+# derives a SemVer from Conventional Commits with semantic-release (tag + GitHub
+# release), then builds and pushes whatever artifacts the repo ships to GHCR at
+# that version: the app image (devops/Dockerfile), the Helm chart (k8s/), and the
+# docs site (docs/Dockerfile). Each step is skipped when its input is absent, so the
+# platform repo (docs-only) and a full app share one workflow. CI never deploys:
+# promotion is ArgoCD Image Updater (ADR-022).
+#
+# First cut. The first real run will surface tweaks (a docs Dockerfile must accept
+# the DOCS_BASE build arg; the chart name comes from k8s/Chart.yaml). Refine against it.
+name: build
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: ARC runner scale set to run on.
+        type: string
+        default: arc-dind
+      image-name:
+        description: GHCR image/chart base name. Defaults to the repo name.
+        type: string
+        default: ${{ github.event.repository.name }}
+      docs-base:
+        description: Base path for the docs site. Empty defaults to /<image-name>; the platform portal passes "/".
+        type: string
+        default: ''
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    runs-on: ${{ inputs.runner }}
+    env:
+      IMG: ghcr.io/${{ github.repository_owner }}/${{ inputs.image-name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: azure/setup-helm@v4
+
+      - name: Log in to GHCR
+        run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      # SemVer from Conventional Commits. No npm publish: just the tag + GitHub release.
+      - name: Release config
+        run: |
+          cat > .releaserc.json <<'JSON'
+          {
+            "branches": ["main"],
+            "plugins": [
+              "@semantic-release/commit-analyzer",
+              "@semantic-release/release-notes-generator",
+              "@semantic-release/github"
+            ]
+          }
+          JSON
+
+      - name: Release
+        id: release
+        uses: cycjimmy/semantic-release-action@v4
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Build and push image, chart, docs
+        if: steps.release.outputs.new_release_published == 'true'
+        env:
+          VERSION: ${{ steps.release.outputs.new_release_version }}
+          OWNER: ${{ github.repository_owner }}
+          APP: ${{ inputs.image-name }}
+          DOCS_BASE: ${{ inputs.docs-base }}
+        run: |
+          set -euo pipefail
+          # App image: only repos that ship one (the platform repo has no devops/Dockerfile).
+          if [ -f devops/Dockerfile ]; then
+            docker build -f devops/Dockerfile -t "$IMG:$VERSION" .
+            docker push "$IMG:$VERSION"
+          fi
+          # Docs site: base path is /<app> by default, "/" for the platform's root portal.
+          if [ -f docs/Dockerfile ]; then
+            BASE="${DOCS_BASE:-/$APP}"
+            docker build -f docs/Dockerfile --build-arg DOCS_BASE="$BASE" -t "$IMG-docs:$VERSION" docs/
+            docker push "$IMG-docs:$VERSION"
+            docker tag "$IMG-docs:$VERSION" "$IMG-docs:latest"
+            docker push "$IMG-docs:latest"
+          fi
+          # Helm chart: only repos that ship one (the platform deploys via platform/, not a chart).
+          if [ -d k8s ]; then
+            helm package k8s --version "$VERSION" --app-version "$VERSION" -d /tmp
+            helm push /tmp/*.tgz "oci://ghcr.io/$OWNER/charts"
+          fi
