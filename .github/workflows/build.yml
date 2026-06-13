@@ -30,7 +30,7 @@ on:
         type: string
         default: ${{ github.event.repository.name }}
       docs-base:
-        description: Base path for the docs site. Empty defaults to /<image-name>; the platform portal passes "/".
+        description: Base path for the docs site. Empty defaults to /apps/<image-name>; the platform portal passes "/".
         type: string
         default: ''
 
@@ -129,9 +129,9 @@ jobs:
             docker push "$REG/$APP:$VERSION"
           fi
 
-          # --- Docs site: base path /<app> by default, "/" for the platform portal. ---
+          # --- Docs site: base path /apps/<app> by default, "/" for the platform portal. ---
           if [ -f docs/Dockerfile ]; then
-            BASE="${DOCS_BASE:-/$APP}"
+            BASE="${DOCS_BASE:-/apps/$APP}"
             docker build -f docs/Dockerfile --build-arg DOCS_BASE="$BASE" -t "$REG/$APP-docs:$VERSION" docs/
             docker push "$REG/$APP-docs:$VERSION"
             docker tag "$REG/$APP-docs:$VERSION" "$REG/$APP-docs:latest"
