@@ -91,7 +91,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install \
-            "csd-intent @ git+https://github.com/PSA-Department-of-Engineering/csd-library.git@csd-intent-v0.1.0#subdirectory=csd-intent"
+            "csd-intent @ git+https://github.com/PSA-Department-of-Engineering/csd-library.git@csd-intent-v0.3.0#subdirectory=csd-intent"
 
       # Mirror tests/test_repo_conformance.py: report every violation, then fail once,
       # so a maintainer sees the whole gap in one run instead of one error at a time.
