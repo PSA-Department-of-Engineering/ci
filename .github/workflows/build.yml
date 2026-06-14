@@ -205,6 +205,11 @@ jobs:
         env:
           VERSION: ${{ steps.release.outputs.new_release_version }}
           DOCS_BASE: ${{ inputs.docs-base }}
+          # Docs sites pull @psa-department-of-engineering/* (e.g. vitest-intent) from
+          # GitHub Packages, which needs auth even for public packages. Hand the docs
+          # build the workflow token as a BuildKit secret (below); the package is
+          # public, so the run-scoped GITHUB_TOKEN can read it without a PAT.
+          NODE_AUTH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           REG="$(printf '%s' "$REG" | tr '[:upper:]' '[:lower:]')"
@@ -260,7 +265,12 @@ jobs:
             # this registry; app repos have none and skip it.
             if [ -f deploy-repos.yaml ]; then cp deploy-repos.yaml docs/deploy-repos.yaml; fi
             BASE="${DOCS_BASE:-/apps/$APP}"
-            docker build -f docs/Dockerfile --build-arg DOCS_BASE="$BASE" -t "$REG/$APP-docs:$VERSION" docs/
+            # NODE_AUTH_TOKEN (the workflow token) is passed as a BuildKit secret so
+            # docs/Dockerfile's `npm ci` can auth to GitHub Packages without baking the
+            # token into a layer. Dockerfiles that don't mount it just ignore it.
+            DOCKER_BUILDKIT=1 docker build -f docs/Dockerfile \
+              --secret id=node_auth_token,env=NODE_AUTH_TOKEN \
+              --build-arg DOCS_BASE="$BASE" -t "$REG/$APP-docs:$VERSION" docs/
             docker push "$REG/$APP-docs:$VERSION"
             docker tag "$REG/$APP-docs:$VERSION" "$REG/$APP-docs:latest"
             docker push "$REG/$APP-docs:latest"
