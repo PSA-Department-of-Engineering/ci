@@ -52,11 +52,12 @@ on:
       PACKAGES_READ_TOKEN:
         required: false
         description: >-
-          read:packages PAT for installing @psa-department-of-engineering/* npm
-          packages (e.g. vitest-intent) from GitHub Packages during the docs image
-          build. Needed only when the caller repo is OUTSIDE the org that owns those
-          packages; a same-org repo's GITHUB_TOKEN reads them, so the build falls
-          back to it when this is unset. Pass via `secrets: inherit`.
+          A GitHub PAT used for two GitHub Packages operations the per-repo
+          GITHUB_TOKEN may not cover: (1) installing @psa-department-of-engineering/*
+          npm packages (e.g. vitest-intent) during the docs image build, and (2)
+          pushing images to an org GHCR namespace (needs write:packages) when the
+          org caps the Actions token to read. Both fall back to GITHUB_TOKEN when
+          unset (fine for a same-org npm read and a personal-namespace push).
 
 permissions:
   contents: write
@@ -187,7 +188,11 @@ jobs:
       - uses: azure/setup-helm@v4
 
       - name: Log in to GHCR
-        run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+        # Prefer the PACKAGES_READ_TOKEN PAT (it carries write:packages) when a repo
+        # provides one, so it can push to an org GHCR namespace its GITHUB_TOKEN
+        # cannot write (orgs cap the Actions token to read). Personal-namespace
+        # repos and any repo without the secret fall back to GITHUB_TOKEN.
+        run: echo "${{ secrets.PACKAGES_READ_TOKEN || github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
       # SemVer from Conventional Commits. No npm publish: just the tag + GitHub release.
       - name: Release config
