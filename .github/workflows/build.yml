@@ -48,6 +48,15 @@ on:
           true; the docs-only platform portal sets it false.
         type: boolean
         default: true
+    secrets:
+      PACKAGES_READ_TOKEN:
+        required: false
+        description: >-
+          read:packages PAT for installing @psa-department-of-engineering/* npm
+          packages (e.g. vitest-intent) from GitHub Packages during the docs image
+          build. Needed only when the caller repo is OUTSIDE the org that owns those
+          packages; a same-org repo's GITHUB_TOKEN reads them, so the build falls
+          back to it when this is unset. Pass via `secrets: inherit`.
 
 permissions:
   contents: write
@@ -206,10 +215,12 @@ jobs:
           VERSION: ${{ steps.release.outputs.new_release_version }}
           DOCS_BASE: ${{ inputs.docs-base }}
           # Docs sites pull @psa-department-of-engineering/* (e.g. vitest-intent) from
-          # GitHub Packages, which needs auth even for public packages. Hand the docs
-          # build the workflow token as a BuildKit secret (below); the package is
-          # public, so the run-scoped GITHUB_TOKEN can read it without a PAT.
-          NODE_AUTH_TOKEN: ${{ github.token }}
+          # GitHub Packages, which needs auth even for public packages. Pass a token to
+          # the docs build as a BuildKit secret (below). A same-org repo's GITHUB_TOKEN
+          # reads the org's packages; a repo OUTSIDE that org cannot (the token's app
+          # installation doesn't exist there), so it supplies a read:packages PAT as
+          # PACKAGES_READ_TOKEN, which wins when set.
+          NODE_AUTH_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN || github.token }}
         run: |
           set -euo pipefail
           REG="$(printf '%s' "$REG" | tr '[:upper:]' '[:lower:]')"
