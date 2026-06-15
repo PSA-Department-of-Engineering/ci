@@ -48,6 +48,14 @@ on:
           true; the docs-only platform portal sets it false.
         type: boolean
         default: true
+      release-comments:
+        description: >-
+          When true, semantic-release comments "released in vX.Y.Z" on the issues
+          and PRs a release closes. Off by default: the GitHub plugin needs the
+          token to carry issues:write and pull-requests:write, so a caller that
+          opts in must also grant those permissions, or the release step fails.
+        type: boolean
+        default: false
     secrets:
       PACKAGES_READ_TOKEN:
         required: false
@@ -62,6 +70,11 @@ on:
 permissions:
   contents: write
   packages: write
+  # Available so a caller that opts into release-comments can let the GitHub
+  # plugin comment on the issues/PRs a release closes. Each caller still caps
+  # what it actually grants, so this is inert for callers that do not opt in.
+  issues: write
+  pull-requests: write
 
 jobs:
   # REF-Homelab section 4: the onboardable-app repo contract. The platform's own
@@ -196,14 +209,25 @@ jobs:
 
       # SemVer from Conventional Commits. No npm publish: just the tag + GitHub release.
       - name: Release config
+        env:
+          # successComment is opt-in (release-comments) and needs the token to
+          # carry issues:write + pull-requests:write, which the caller must grant;
+          # otherwise the GitHub plugin throws resolving the issue and fails the
+          # release. Off by default keeps every other caller's releases green.
+          RELEASE_COMMENTS: ${{ inputs.release-comments }}
         run: |
-          cat > .releaserc.json <<'JSON'
+          if [ "$RELEASE_COMMENTS" = "true" ]; then
+            GH_OPTS='{ "failComment": false, "failTitle": false }'
+          else
+            GH_OPTS='{ "successComment": false, "failComment": false, "failTitle": false }'
+          fi
+          cat > .releaserc.json <<JSON
           {
             "branches": ["main"],
             "plugins": [
               "@semantic-release/commit-analyzer",
               "@semantic-release/release-notes-generator",
-              ["@semantic-release/github", { "successComment": false, "failComment": false, "failTitle": false }]
+              ["@semantic-release/github", ${GH_OPTS} ]
             ]
           }
           JSON
