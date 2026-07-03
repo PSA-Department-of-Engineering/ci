@@ -67,14 +67,13 @@ on:
           org caps the Actions token to read. Both fall back to GITHUB_TOKEN when
           unset (fine for a same-org npm read and a personal-namespace push).
 
-permissions:
-  contents: write
-  packages: write
-  # Available so a caller that opts into release-comments can let the GitHub
-  # plugin comment on the issues/PRs a release closes. Each caller still caps
-  # what it actually grants, so this is inert for callers that do not opt in.
-  issues: write
-  pull-requests: write
+# No top-level permissions block, deliberately: a called workflow may request
+# only a SUBSET of what its caller grants, so declaring permissions here makes
+# any caller granting less fail at run creation (startup_failure), and any
+# caller granting more (release-comments opt-ins need issues:write +
+# pull-requests:write) gets capped to this block. Inheriting means each caller's
+# own grant (contents:write + packages:write in the standard thin caller) flows
+# through unchanged.
 
 jobs:
   # REF-Homelab section 4: the onboardable-app repo contract. The platform's own
