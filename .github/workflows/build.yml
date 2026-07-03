@@ -280,7 +280,10 @@ jobs:
               .map(([k, v]) => '--build-arg ' + q(k + '=' + (v == null ? '' : v)));
             const tag = reg + '/' + base + ':' + version;
             lines.push('echo "==> building ' + base + '"');
-            lines.push(['docker build', q(ctx), '-f', q(dockerfile), ...args, '-t', q(tag)].join(' '));
+            // NODE_AUTH_TOKEN rides in as a BuildKit secret, exactly like the docs
+            // build below: app Dockerfiles whose SPA stage consumes
+            // @psa-department-of-engineering/* packages mount it; the rest ignore it.
+            lines.push(['DOCKER_BUILDKIT=1 docker build', '--secret id=node_auth_token,env=NODE_AUTH_TOKEN', q(ctx), '-f', q(dockerfile), ...args, '-t', q(tag)].join(' '));
             lines.push('docker push ' + q(tag));
             n++;
           }
@@ -291,7 +294,9 @@ jobs:
             node /tmp/gen-build.js
             bash /tmp/build-images.sh
           elif [ -f devops/Dockerfile ]; then
-            docker build -f devops/Dockerfile -t "$REG/$APP:$VERSION" .
+            DOCKER_BUILDKIT=1 docker build -f devops/Dockerfile \
+              --secret id=node_auth_token,env=NODE_AUTH_TOKEN \
+              -t "$REG/$APP:$VERSION" .
             docker push "$REG/$APP:$VERSION"
           fi
 
