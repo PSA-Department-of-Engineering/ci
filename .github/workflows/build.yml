@@ -251,6 +251,13 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN || github.token }}
         run: |
           set -euo pipefail
+          # cycjimmy/semantic-release-action unconditionally deletes the workspace
+          # .npmrc when it finishes (its cleanupNpmrc task, which guards the action's
+          # own npm-auth injection). That also removes a repo's COMMITTED root .npmrc
+          # and breaks any app image build that COPYs it into the build context (a
+          # docs/.npmrc sits outside the action's cwd and is unaffected). Restore
+          # deleted/modified tracked files so the build sees the tree as committed.
+          git restore .
           REG="$(printf '%s' "$REG" | tr '[:upper:]' '[:lower:]')"
           APP="$(printf '%s' "$APP" | tr '[:upper:]' '[:lower:]')"
           export REG VERSION
