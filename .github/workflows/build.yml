@@ -170,6 +170,15 @@ jobs:
           [ -f .env.example ] || bad "missing .env.example (INT-HOMELAB-008)"
           [ -f intent.yaml ] || bad "missing root intent.yaml (INT-HOMELAB-009)"
 
+          # .github/workflows/: an app never provides the GitHub Packages token itself. The
+          # token lives once, in the shared setup-node-auth composite; an app calls it (or
+          # thin-calls the reusable test.yml) and never assigns NODE_AUTH_TOKEN. One
+          # invariant, not a blocklist of spellings (mirrors tests/test_repo_conformance.py).
+          if [ -d .github/workflows ]; then
+            tok=$(grep -rlE 'NODE_AUTH_TOKEN[[:space:]]*[:=]' .github/workflows 2>/dev/null || true)
+            [ -z "$tok" ] || bad "workflow(s) set NODE_AUTH_TOKEN themselves (call the shared setup-node-auth composite instead): ${tok//$'\n'/ }(INT-HOMELAB-039)"
+          fi
+
           if [ "$fail" -ne 0 ]; then
             echo "Repo violates the REF-Homelab section 4 contract (see the lines above)."
             exit 1
