@@ -1,0 +1,33 @@
+# The single home for the GitHub Packages credential in TEST/CI jobs. setup-node
+# plus the token that lets `npm ci` pull @psa-department-of-engineering/* (e.g.
+# vitest-intent) - a read:packages PACKAGES_READ_TOKEN for a repo OUTSIDE the
+# package's org, else the automatic GITHUB_TOKEN, which suffices for a same-org read.
+# Any workflow, any ecosystem, any working directory drops this in as one step and
+# never repeats the token; the committed .npmrc reads NODE_AUTH_TOKEN from the env
+# this exports. This is the composite that build.yml's rule (PACKAGES_READ_TOKEN ||
+# github.token) is factored into, so the credential lives in exactly one place.
+name: Set up Node with GitHub Packages auth
+description: setup-node plus the @psa-department-of-engineering GitHub Packages token, centralized so no workflow repeats it.
+
+inputs:
+  node-version:
+    description: Node version to install.
+    required: false
+    default: '20'
+  packages-read-token:
+    description: A read:packages PAT for a repo outside the package's org; falls back to the workflow GITHUB_TOKEN.
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+    - shell: bash
+      # Export via an env var (never on the logged command line), so subsequent npm
+      # steps in the job see NODE_AUTH_TOKEN and the committed .npmrc can auth.
+      env:
+        TOKEN: ${{ inputs.packages-read-token || github.token }}
+      run: echo "NODE_AUTH_TOKEN=$TOKEN" >> "$GITHUB_ENV"

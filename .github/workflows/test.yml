@@ -1,14 +1,15 @@
-# Reusable test workflow for homelab node app repos (ADR-019). A thin per-repo
+# Reusable test workflow for standard node app repos (ADR-019). A thin per-repo
 # caller invokes this with `secrets: inherit`; it type-checks and runs the app's
-# unit, e2e, docs, and intent suites. The GitHub Packages token lives HERE, once
-# (PACKAGES_READ_TOKEN || github.token, the same rule build.yml uses), so no app
-# repeats it and there is nothing per-repo to get wrong. Runs on GitHub-hosted
-# runners so tests never depend on homelab uptime; the build (conformance + release)
-# runs separately on the ARC runners. Each suite is opt-in via an input, defaulting
-# to the standard delivery-app shape (a node frontend + Starlight docs + intent).
+# unit, e2e, docs, and intent suites. The GitHub Packages token is not named here:
+# it lives in the setup-node-auth composite action, which every job uses, so the
+# credential has exactly one home. Runs on GitHub-hosted runners so tests never
+# depend on homelab uptime; the build (conformance + release) runs on ARC runners.
+# Suites are opt-in inputs, defaulting to the standard delivery-app shape.
 #
-# Scope: node app repos, which is what the delivery pipeline produces. A python
-# backend adds a pytest suite here behind its own input rather than hand-rolling one.
+# Scope: standard node app repos (root package.json with test:unit / test:e2e).
+# A heterogeneous repo (python backend, frontend in a subdir, non-standard script
+# names) keeps its own test.yml and drops the setup-node-auth composite into each
+# node job instead - same token home, no reusable-workflow straitjacket.
 name: test
 
 on:
@@ -39,8 +40,8 @@ on:
         required: false
         description: >-
           A read:packages PAT for a repo OUTSIDE the package's org, whose
-          GITHUB_TOKEN cannot read @psa-department-of-engineering/* from GitHub
-          Packages. Falls back to GITHUB_TOKEN, which suffices for a same-org read.
+          GITHUB_TOKEN cannot read @psa-department-of-engineering/*. Falls back to
+          GITHUB_TOKEN inside the composite; a same-org read needs no PAT.
 
 jobs:
   frontend:
@@ -48,12 +49,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: PSA-Department-of-Engineering/ci/.github/actions/setup-node-auth@main
         with:
           node-version: ${{ inputs.node-version }}
-      - name: Install, type-check and unit test
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN || github.token }}
+          packages-read-token: ${{ secrets.PACKAGES_READ_TOKEN }}
+      - name: Type-check and unit test
         run: |
           npm ci
           npx tsc --noEmit
@@ -64,12 +64,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: PSA-Department-of-Engineering/ci/.github/actions/setup-node-auth@main
         with:
           node-version: ${{ inputs.node-version }}
+          packages-read-token: ${{ secrets.PACKAGES_READ_TOKEN }}
       - name: Build and run e2e
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN || github.token }}
         run: |
           npm ci
           npx playwright install --with-deps chromium
@@ -84,12 +83,11 @@ jobs:
         working-directory: docs
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: PSA-Department-of-Engineering/ci/.github/actions/setup-node-auth@main
         with:
           node-version: ${{ inputs.node-version }}
+          packages-read-token: ${{ secrets.PACKAGES_READ_TOKEN }}
       - name: Docs meta-tests
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN || github.token }}
         run: |
           npm ci
           npm test
