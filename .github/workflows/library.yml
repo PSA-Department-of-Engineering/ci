@@ -37,7 +37,19 @@ permissions:
   packages: write        # npm publish to GitHub Packages
 
 jobs:
+  # The org's two commit invariants (Conventional-Commits subject + no co-author
+  # trailer), enforced where every release flows: release-please derives each package's
+  # version from the commit type, so a malformed subject silently ships nothing. release
+  # needs it, so a bad commit never cuts a release PR.
+  commit-hygiene:
+    runs-on: ${{ inputs.runner }}
+    permissions:
+      contents: read
+    steps:
+      - uses: PSA-Department-of-Engineering/ci/.github/actions/check-commit-hygiene@main
+
   release:
+    needs: commit-hygiene
     runs-on: ${{ inputs.runner }}
     outputs:
       paths_released: ${{ steps.release.outputs.paths_released }}

@@ -57,4 +57,5 @@ One-time repo settings the caller needs: **Settings → Actions → General → 
 
 - Conventional Commits drive every version: `fix:` → patch, `feat:` → minor, `feat!:` / `BREAKING CHANGE:` → major.
 - In a monorepo, scope the commit to the package (`fix(csd-intent): …`) so only that package's version moves.
+- Both workflows enforce two commit invariants before releasing, via the shared `check-commit-hygiene` composite: every newly-pushed commit must have a Conventional-Commits subject (a malformed type ships nothing, so it fails the run loudly), and none may carry a `Co-Authored-By:` / AI-attribution trailer.
 - Pin callers to `@main`; these workflows are versioned by this repo's history.
