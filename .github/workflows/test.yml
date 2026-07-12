@@ -1,0 +1,110 @@
+# Reusable test workflow for homelab node app repos (ADR-019). A thin per-repo
+# caller invokes this with `secrets: inherit`; it type-checks and runs the app's
+# unit, e2e, docs, and intent suites. The GitHub Packages token lives HERE, once
+# (PACKAGES_READ_TOKEN || github.token, the same rule build.yml uses), so no app
+# repeats it and there is nothing per-repo to get wrong. Runs on GitHub-hosted
+# runners so tests never depend on homelab uptime; the build (conformance + release)
+# runs separately on the ARC runners. Each suite is opt-in via an input, defaulting
+# to the standard delivery-app shape (a node frontend + Starlight docs + intent).
+#
+# Scope: node app repos, which is what the delivery pipeline produces. A python
+# backend adds a pytest suite here behind its own input rather than hand-rolling one.
+name: test
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: Node version for the frontend and docs suites.
+        type: string
+        default: '20'
+      unit:
+        description: Frontend type-check (tsc --noEmit) + unit tests (npm run test:unit).
+        type: boolean
+        default: true
+      e2e:
+        description: Playwright e2e (npm run build, then npm run test:e2e).
+        type: boolean
+        default: true
+      docs:
+        description: Docs meta-tests (docs/, npm test).
+        type: boolean
+        default: true
+      intent-audit:
+        description: Cross-runtime intent audit over the repo (csd-intent).
+        type: boolean
+        default: true
+    secrets:
+      PACKAGES_READ_TOKEN:
+        required: false
+        description: >-
+          A read:packages PAT for a repo OUTSIDE the package's org, whose
+          GITHUB_TOKEN cannot read @psa-department-of-engineering/* from GitHub
+          Packages. Falls back to GITHUB_TOKEN, which suffices for a same-org read.
+
+jobs:
+  frontend:
+    if: ${{ inputs.unit }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+      - name: Install, type-check and unit test
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN || github.token }}
+        run: |
+          npm ci
+          npx tsc --noEmit
+          npm run test:unit
+
+  e2e:
+    if: ${{ inputs.e2e }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+      - name: Build and run e2e
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN || github.token }}
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          npm run build
+          npm run test:e2e
+
+  docs:
+    if: ${{ inputs.docs }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: docs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+      - name: Docs meta-tests
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN || github.token }}
+        run: |
+          npm ci
+          npm test
+
+  intent-audit:
+    if: ${{ inputs.intent-audit }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install csd-intent
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "csd-intent @ git+https://github.com/PSA-Department-of-Engineering/csd-library.git@csd-intent-v0.3.0#subdirectory=csd-intent"
+      - name: Audit intent claims (root + docs, cross-runtime)
+        run: csd-intent . --fail-on any
