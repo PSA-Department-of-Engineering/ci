@@ -1,0 +1,81 @@
+# The single home for the org's two commit invariants, enforced where every release
+# flows. Both release engines derive the version from the commit type - semantic-release
+# (build.yml) and release-please (library.yml) - so a non-Conventional-Commits subject
+# silently ships nothing; catching it here makes the failure loud instead. And no commit
+# may carry a co-author / AI-attribution trailer: a standing repo rule, mechanically
+# enforced rather than left to prose. Both workflows call this composite (like they call
+# setup-node-auth), so the check lives once and cannot drift across the shared path.
+#
+# Runs over the commits a push introduced (github.event.before..github.sha), skipping
+# merge commits, which are auto-generated and neither release engine reads.
+name: Check commit hygiene
+description: Fail the run if any newly-pushed commit has a non-Conventional-Commits subject or a co-author/AI-attribution trailer.
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@v4
+      with:
+        # Full history: the push range (before..sha) must be reachable to diff it.
+        fetch-depth: 0
+
+    - shell: bash
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        BEFORE: ${{ github.event.before }}
+        AFTER: ${{ github.sha }}
+        BASE_REF: ${{ github.base_ref }}
+      run: |
+        set -uo pipefail
+        zero="0000000000000000000000000000000000000000"
+
+        # Conventional Commit types both release engines recognize: semantic-release's
+        # angular preset and release-please's conventional-commits defaults share this set.
+        # A subject whose type is outside it moves no version, so it is a hard failure here.
+        types='build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test'
+
+        # Resolve the commits this event introduced. A pull_request (should a caller wire
+        # one) diffs against its base; a push diffs before..sha; a first push or a
+        # force-past-unreachable-before falls back to the single new tip. Merge commits are
+        # excluded throughout: they carry no authored content either engine acts on.
+        if [ "$EVENT_NAME" = "pull_request" ] && [ -n "${BASE_REF:-}" ]; then
+          commits=$(git rev-list --no-merges "origin/$BASE_REF..$AFTER")
+        elif [ -n "${BEFORE:-}" ] && [ "$BEFORE" != "$zero" ] \
+             && git rev-parse -q --verify "$BEFORE^{commit}" >/dev/null 2>&1; then
+          commits=$(git rev-list --no-merges "$BEFORE..$AFTER")
+        else
+          commits=$(git rev-list --no-merges -n 1 "$AFTER")
+        fi
+
+        if [ -z "$commits" ]; then
+          echo "No non-merge commits to check."
+          exit 0
+        fi
+
+        # Mirror build.yml's conformance job: report every violation, then fail once, so a
+        # maintainer sees the whole gap in one run instead of one error at a time.
+        fail=0
+        bad() { echo "  x $1"; fail=1; }
+        echo "Commit hygiene over $(printf '%s\n' "$commits" | wc -l | tr -d ' ') commit(s):"
+
+        for sha in $commits; do
+          short=$(git rev-parse --short "$sha")
+          subject=$(git log -1 --format=%s "$sha")
+
+          # 1. Conventional Commits subject: type(optional-scope)optional-!: subject.
+          if ! printf '%s' "$subject" | grep -Eq "^($types)(\([^)]+\))?!?: .+"; then
+            bad "$short subject is not a Conventional Commit: '$subject'"
+          fi
+
+          # 2. No co-author / AI-attribution trailer anywhere in the message (git trailers
+          # are case-insensitive, so match any casing of Co-authored-by).
+          if git log -1 --format=%B "$sha" | grep -iqE '^[[:space:]]*Co-authored-by:'; then
+            bad "$short carries a Co-authored-by trailer (org rule: no co-author/AI attribution)"
+          fi
+        done
+
+        if [ "$fail" -ne 0 ]; then
+          echo "Commit hygiene failed (see the lines above): a malformed subject ships no release, and a co-author trailer breaks a standing repo rule."
+          exit 1
+        fi
+        echo "  OK: every commit conforms"

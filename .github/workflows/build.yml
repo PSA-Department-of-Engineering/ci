@@ -191,8 +191,20 @@ jobs:
         name: Audit intent.yaml (csd-intent)
         run: csd-intent .
 
+  # The org's two commit invariants (Conventional-Commits subject + no co-author
+  # trailer), enforced where every release flows: semantic-release derives the version
+  # from the subject type, so a malformed subject silently ships nothing. Unlike
+  # conformance this applies to EVERY repo, including the docs-only portal, so it is
+  # independent of app-contract. release needs it, so a bad commit is never released.
+  commit-hygiene:
+    runs-on: ${{ inputs.runner }}
+    permissions:
+      contents: read
+    steps:
+      - uses: PSA-Department-of-Engineering/ci/.github/actions/check-commit-hygiene@main
+
   release:
-    needs: conformance
+    needs: [conformance, commit-hygiene]
     runs-on: ${{ inputs.runner }}
     env:
       # ghcr.io/<owner>; lowercased at point of use (owner may carry uppercase).
