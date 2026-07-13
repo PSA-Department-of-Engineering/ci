@@ -48,8 +48,17 @@ jobs:
     steps:
       - uses: PSA-Department-of-Engineering/ci/.github/actions/check-commit-hygiene@main
 
+  # The org's secrets gate: fail the run when a pushed commit introduces a credential.
+  # release needs it, so a leaked secret never cuts a release PR or publishes a package.
+  secrets-scan:
+    runs-on: ${{ inputs.runner }}
+    permissions:
+      contents: read
+    steps:
+      - uses: PSA-Department-of-Engineering/ci/.github/actions/secrets-scan@main
+
   release:
-    needs: commit-hygiene
+    needs: [commit-hygiene, secrets-scan]
     runs-on: ${{ inputs.runner }}
     outputs:
       paths_released: ${{ steps.release.outputs.paths_released }}

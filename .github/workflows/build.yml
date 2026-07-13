@@ -203,8 +203,18 @@ jobs:
     steps:
       - uses: PSA-Department-of-Engineering/ci/.github/actions/check-commit-hygiene@main
 
+  # The org's secrets gate: fail the run when a pushed commit introduces a credential.
+  # Like commit-hygiene this applies to EVERY repo, including the docs-only portal, so it
+  # is independent of app-contract. release needs it, so a leaked secret is never released.
+  secrets-scan:
+    runs-on: ${{ inputs.runner }}
+    permissions:
+      contents: read
+    steps:
+      - uses: PSA-Department-of-Engineering/ci/.github/actions/secrets-scan@main
+
   release:
-    needs: [conformance, commit-hygiene]
+    needs: [conformance, commit-hygiene, secrets-scan]
     runs-on: ${{ inputs.runner }}
     env:
       # ghcr.io/<owner>; lowercased at point of use (owner may carry uppercase).

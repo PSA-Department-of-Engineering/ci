@@ -1,0 +1,89 @@
+# The org's secrets gate, enforced where every release flows. A commit that
+# introduces a credential must never reach a tag or a published artifact, so this
+# scans the exact commits a push added and fails the run loudly when it finds one.
+# Both workflows call this composite (like they call check-commit-hygiene and
+# setup-node-auth), so the gate lives once and cannot drift across the shared path.
+#
+# gitleaks is the standard tool; it is run as a pinned release binary rather than via
+# gitleaks/gitleaks-action, deliberately: the action's v2 requires a paid GITLEAKS_LICENSE
+# for organization repos (which every caller here is), and a version-pinned binary keeps
+# the gate reproducible — it moves only when this composite's default does.
+#
+# Runs over the commits a push introduced (github.event.before..github.sha), skipping
+# merge commits, which are auto-generated and add no authored content — the same range
+# check-commit-hygiene judges, so both gates see exactly the same push.
+name: Secrets scan (gitleaks)
+description: Fail the run if any newly-pushed commit introduces a secret; a repo-level .gitleaks.toml allowlists false positives.
+
+inputs:
+  gitleaks-version:
+    description: Pinned gitleaks release to run (no leading v). Bump here to move every shared workflow at once.
+    required: false
+    default: '8.30.1'
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@v4
+      with:
+        # Full history: the push range (before..sha) must be reachable to scan it.
+        fetch-depth: 0
+
+    - shell: bash
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        BEFORE: ${{ github.event.before }}
+        AFTER: ${{ github.sha }}
+        BASE_REF: ${{ github.base_ref }}
+        GITLEAKS_VERSION: ${{ inputs.gitleaks-version }}
+      run: |
+        set -uo pipefail
+        zero="0000000000000000000000000000000000000000"
+
+        # Resolve the commits this event introduced — the same range logic as
+        # check-commit-hygiene, so both gates judge exactly the same push. A pull_request
+        # (should a caller wire one) diffs against its base; a push diffs before..sha; a
+        # first push or a force-past-unreachable-before falls back to the single new tip.
+        # Merge commits are excluded: they carry no authored content.
+        if [ "$EVENT_NAME" = "pull_request" ] && [ -n "${BASE_REF:-}" ]; then
+          RANGE="origin/$BASE_REF..$AFTER"
+        elif [ -n "${BEFORE:-}" ] && [ "$BEFORE" != "$zero" ] \
+             && git rev-parse -q --verify "$BEFORE^{commit}" >/dev/null 2>&1; then
+          RANGE="$BEFORE..$AFTER"
+        else
+          RANGE="-n 1 $AFTER"   # single new tip, no reachable parent range
+        fi
+
+        if [ -z "$(git rev-list --no-merges $RANGE 2>/dev/null)" ]; then
+          echo "No non-merge commits to scan."
+          exit 0
+        fi
+
+        # Fetch the pinned gitleaks binary (Linux x64 — both the ARC dind and the
+        # GitHub-hosted runners the shared workflows use are linux/amd64).
+        tmp="$(mktemp -d)"
+        url="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+        echo "Fetching gitleaks v${GITLEAKS_VERSION}"
+        curl -fsSL "$url" | tar -xz -C "$tmp" gitleaks
+        chmod +x "$tmp/gitleaks"
+
+        # A repo may drop a root .gitleaks.toml (or gitleaks.toml) to allowlist its own
+        # false positives; pass it explicitly so the allowlist applies regardless of
+        # gitleaks' config-discovery rules. With none, gitleaks uses its embedded ruleset.
+        cfg=()
+        for c in .gitleaks.toml gitleaks.toml; do
+          if [ -f "$c" ]; then cfg=(--config "$c"); break; fi
+        done
+
+        # Scan only the pushed range's patches (--log-opts feeds git log). --redact keeps a
+        # found secret out of the CI logs. gitleaks exits non-zero on a finding; branch on
+        # it explicitly (this script runs without `set -e`, so the failure must be handled,
+        # not left to fall through) and fail the run loudly, like a malformed commit subject.
+        echo "Scanning the pushed commits for secrets: $RANGE"
+        if "$tmp/gitleaks" git . --no-banner --redact "${cfg[@]}" --log-opts="--no-merges $RANGE"; then
+          echo "  OK: no secrets introduced by the pushed commits"
+        else
+          echo "Secrets scan failed: a pushed commit introduces a credential (see the finding above)."
+          echo "Rotate the secret and rewrite the commit; allowlist a genuine false positive in a root .gitleaks.toml."
+          exit 1
+        fi
