@@ -29,10 +29,18 @@ runs:
         set -uo pipefail
         zero="0000000000000000000000000000000000000000"
 
-        # Conventional Commit types both release engines recognize: semantic-release's
-        # angular preset and release-please's conventional-commits defaults share this set.
-        # A subject whose type is outside it moves no version, so it is a hard failure here.
-        types='build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test'
+        # The commit types this gate accepts: the standard Conventional Commits set both
+        # release engines understand (semantic-release's angular preset and release-please's
+        # conventional-commits defaults share it), plus one org-specific type, `delivery`. A
+        # subject whose type is outside this set is a hard failure: neither release engine
+        # recognizes it, so it would silently ship nothing.
+        #
+        # `delivery` is deliberately release-neutral. The delivery console's worker commits
+        # each phase's .delivery/ scratch record with a deterministic `delivery(<phase>):`
+        # subject (foundry-console/devops/worker-entrypoint.sh), a provenance marker worth
+        # keeping rather than folding into `chore`. Neither release engine acts on it, so it
+        # passes hygiene yet never cuts a version; build.yml pins that no-release explicitly.
+        types='build|chore|ci|delivery|docs|feat|fix|perf|refactor|revert|style|test'
 
         # Resolve the commits this event introduced. A pull_request (should a caller wire
         # one) diffs against its base; a push diffs before..sha; a first push or a

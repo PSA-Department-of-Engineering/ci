@@ -241,11 +241,15 @@ jobs:
           else
             GH_OPTS='{ "successComment": false, "failComment": false, "failTitle": false }'
           fi
+          # commit-analyzer keeps the angular preset's defaults (feat -> minor, fix -> patch,
+          # BREAKING -> major); the one added rule pins the org-specific `delivery` type to
+          # no release, so the console's deterministic .delivery/ scratch commits never cut a
+          # version (check-commit-hygiene lets `delivery(...)` subjects through the gate).
           cat > .releaserc.json <<JSON
           {
             "branches": ["main"],
             "plugins": [
-              "@semantic-release/commit-analyzer",
+              ["@semantic-release/commit-analyzer", { "releaseRules": [{ "type": "delivery", "release": false }] }],
               "@semantic-release/release-notes-generator",
               ["@semantic-release/github", ${GH_OPTS} ]
             ]
