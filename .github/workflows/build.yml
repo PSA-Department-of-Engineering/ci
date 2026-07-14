@@ -135,6 +135,21 @@ jobs:
             [ -e "k8s/$f" ] || bad "k8s/ is not a complete Helm chart, missing k8s/$f (INT-HOMELAB-005)"
           done
 
+          # Homepage tile discovery: the app's tile hangs off its <app>-docs docs HTTPRoute, and
+          # Homepage derives the tile's pod-status selector from that route NAME (it looks for a pod
+          # labelled app.kubernetes.io/name=<app>-docs). So the docs Deployment must label its pod
+          # app.kubernetes.io/name: <chart>-docs inline (the fleet convention), or the tile reads
+          # NOT FOUND though the docs are healthy. Files with a Deployment only, so the docs Service
+          # is not scanned; same docs heuristic INT-HOMELAB-030 uses to except the docs workload.
+          if [ -d k8s/templates ]; then
+            while IFS= read -r f; do
+              [ -n "$f" ] || continue
+              grep -qE 'app\.kubernetes\.io/component:[[:space:]]*docs|-docs' "$f" || continue
+              grep -qE 'app\.kubernetes\.io/name:.*-docs' "$f" \
+                || bad "docs Deployment $f labels its pod with the bare app name; the app's <app>-docs homepage tile can't find the pod and reads NOT FOUND. Label it app.kubernetes.io/name: <chart>-docs inline, not via the shared labels/selectorLabels helper (INT-HOMELAB-048)"
+            done < <(grep -rlE 'kind:[[:space:]]*Deployment' k8s/templates 2>/dev/null)
+          fi
+
           # docs/: a deployable site that honors DOCS_BASE so it mounts under the portal
           # prefix. astro `base` derives from DOCS_BASE, and the Dockerfile declares ARG
           # DOCS_BASE and serves the built (flat) site UNDER that prefix.
