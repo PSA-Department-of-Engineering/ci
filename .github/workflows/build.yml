@@ -150,6 +150,66 @@ jobs:
             done < <(grep -rlE 'kind:[[:space:]]*Deployment' k8s/templates 2>/dev/null)
           fi
 
+          # --- chart delivery-wiring guards (INT-HOMELAB-045..047): three defect classes
+          # autonomous deliveries shipped and only live traffic caught (ImagePullBackOff, an
+          # NXDOMAIN host, a self-upgrading sidecar). Grep mirrors of the same-named
+          # tests/test_repo_conformance.py checks, run HERE so the release fails before the app
+          # is ever deployed, instead of the delivery stopping degraded at live verification.
+
+          # 045: every Deployment template references imagePullSecrets, or its pods pull
+          # anonymously from private GHCR and land in ImagePullBackOff (token-racing-track,
+          # shattered-catacombs) — invisible until the app is live. Per-file, like the docs-label
+          # check above.
+          if [ -d k8s/templates ]; then
+            while IFS= read -r f; do
+              [ -n "$f" ] || continue
+              grep -q 'imagePullSecrets' "$f" \
+                || bad "Deployment template $f references no imagePullSecrets; its pods pull anonymously and ImagePullBackOff on private GHCR. Reference the values-driven list (default: [name: ghcr-pull]) (INT-HOMELAB-045)"
+            done < <(grep -rlE 'kind:[[:space:]]*Deployment' k8s/templates 2>/dev/null)
+          fi
+
+          # 046: an app HTTPRoute must attach to the app's own platform Gateway (parentRef
+          # pinning namespace network, never an invented gateway) AND carry the app hostname,
+          # or external-dns (gateway-httproute source) registers nothing and the host stays
+          # NXDOMAIN. Both shapes shipped live (token-racing-track: a hallucinated
+          # homelab-gateway/gateway-system parent with no hostnames; shattered-catacombs: the
+          # namespace line dropped). The namespace check is values-driven-or-literal like the
+          # test, case-insensitive on the values side so a flat `gatewayNamespace: network` reads
+          # the same as a nested `gateway.namespace`.
+          if [ -d k8s/templates ]; then
+            routes=$(grep -rlE 'kind:[[:space:]]*HTTPRoute' k8s/templates 2>/dev/null || true)
+            if [ -n "$routes" ]; then
+              for inv in homelab-gateway gateway-system; do
+                grep -qsF "$inv" $routes \
+                  && bad "HTTPRoute references '$inv', which is not a platform Gateway; the app route attaches to the app's own Gateway (name = the app, namespace = network) (INT-HOMELAB-046)"
+              done
+              grep -qs 'hostnames:' $routes \
+                || bad "no HTTPRoute template carries hostnames:; external-dns registers DNS from the route hostname, so the app host stays NXDOMAIN (INT-HOMELAB-046)"
+              { [ -f k8s/values.yaml ] && grep -qiE '^[[:space:]]*[a-z0-9_-]*host[a-z0-9_-]*:[[:space:]]*"?[^[:space:]"]*\.chaos-architect\.dev' k8s/values.yaml; } \
+                || bad "k8s/values.yaml sets no <name>.chaos-architect.dev hostname default for the route to carry, so external-dns registers nothing (INT-HOMELAB-046)"
+              { grep -qsE 'namespace:[[:space:]]*network\b' $routes \
+                || { [ -f k8s/values.yaml ] && grep -qsiE 'namespace:[[:space:]]*network\b' k8s/values.yaml; }; } \
+                || bad "the app route's parentRef pins no 'network' namespace (values-driven gateway namespace or literal); without it the ref defaults to the app namespace, no Gateway accepts the route, and DNS never registers (INT-HOMELAB-046)"
+            fi
+          fi
+
+          # 047: no FULL third-party image ref (one carrying a registry/path, unlike the
+          # first-party repository+tag split the deploy branch pins and Image Updater maintains)
+          # may float on :latest — it self-upgrades on the registry's schedule and cannot be
+          # rolled back (an oauth2-proxy; token-racing-track shipped one). Full refs ending
+          # :latest, in values.yaml or literal in a template ({{ }}-templated refs are skipped by
+          # excluding '{'), are the offenders; a bare `tag: latest` has no '/' and is inert.
+          latest=""
+          if [ -f k8s/values.yaml ]; then
+            hits=$(grep -oE '[^[:space:]"]+/[^[:space:]"]+:latest' k8s/values.yaml || true)
+            [ -z "$hits" ] || latest="$latest values.yaml:{${hits//$'\n'/ }}"
+          fi
+          if [ -d k8s/templates ]; then
+            hits=$(grep -rhoE 'image:[[:space:]]*"?[^[:space:]"{]+/[^[:space:]"{]+:latest' k8s/templates 2>/dev/null || true)
+            [ -z "$hits" ] || latest="$latest templates:{${hits//$'\n'/ }}"
+          fi
+          [ -z "$latest" ] || bad "third-party image reference(s) floating on :latest (self-upgrading, un-rollbackable; pin a version):$latest (INT-HOMELAB-047)"
+
           # docs/: a deployable site that honors DOCS_BASE so it mounts under the portal
           # prefix. astro `base` derives from DOCS_BASE, and the Dockerfile declares ARG
           # DOCS_BASE and serves the built (flat) site UNDER that prefix.
