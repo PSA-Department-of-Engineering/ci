@@ -185,8 +185,8 @@ jobs:
               done
               grep -qs 'hostnames:' $routes \
                 || bad "no HTTPRoute template carries hostnames:; external-dns registers DNS from the route hostname, so the app host stays NXDOMAIN (INT-HOMELAB-046)"
-              { [ -f k8s/values.yaml ] && grep -qiE '^[[:space:]]*[a-z0-9_-]*host[a-z0-9_-]*:[[:space:]]*"?[^[:space:]"]*\.chaos-architect\.dev' k8s/values.yaml; } \
-                || bad "k8s/values.yaml sets no <name>.chaos-architect.dev hostname default for the route to carry, so external-dns registers nothing (INT-HOMELAB-046)"
+              { [ -f k8s/values.yaml ] && grep -qiE '^[[:space:]]*[a-z0-9_-]*host[a-z0-9_-]*:' k8s/values.yaml; } \
+                || bad "k8s/values.yaml declares no host key for the app route to carry; the chart must parameterize the hostname (a default for a single-install app, or empty and set per-install on the deploy branch for an install-agnostic app), so external-dns has a value to register (INT-HOMELAB-046)"
               { grep -qsE 'namespace:[[:space:]]*network\b' $routes \
                 || { [ -f k8s/values.yaml ] && grep -qsiE 'namespace:[[:space:]]*network\b' k8s/values.yaml; }; } \
                 || bad "the app route's parentRef pins no 'network' namespace (values-driven gateway namespace or literal); without it the ref defaults to the app namespace, no Gateway accepts the route, and DNS never registers (INT-HOMELAB-046)"
