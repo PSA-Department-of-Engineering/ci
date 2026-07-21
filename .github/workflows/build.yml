@@ -210,6 +210,21 @@ jobs:
           fi
           [ -z "$latest" ] || bad "third-party image reference(s) floating on :latest (self-upgrading, un-rollbackable; pin a version):$latest (INT-HOMELAB-047)"
 
+          # 057: an oauth2-proxy sidecar fronts SSO with --provider=oidc, never keycloak-oidc
+          # (which audience-checks the access token, whose Keycloak default aud is 'account'
+          # not the client, so every login callback 500s), and the routes flag is the SINGULAR
+          # --api-route (the pluralized --api-routes is an unknown flag that crash-loops the
+          # proxy). Both shipped live (keycloak-oidc on Alexandria and token-racing-track;
+          # --api-routes on Alexandria). Anchored to the arg line so an explanatory comment
+          # naming the wrong flag is not itself flagged. Grep mirror of the same-named
+          # tests/test_repo_conformance.py check; runs HERE so the release fails before deploy.
+          if [ -d k8s/templates ]; then
+            grep -rEqs -e '^[[:space:]]*-[[:space:]]*--provider=keycloak-oidc' k8s/templates \
+              && bad "oauth2-proxy sets --provider=keycloak-oidc; Keycloak's default access-token aud is 'account', so every login callback 500s. Use --provider=oidc, which validates the ID token (aud = client-id) (INT-HOMELAB-057)"
+            grep -rEqs -e '^[[:space:]]*-[[:space:]]*--api-routes' k8s/templates \
+              && bad "oauth2-proxy uses the pluralized --api-routes, an unknown flag that crash-loops the proxy; the flag is the singular --api-route (INT-HOMELAB-057)"
+          fi
+
           # docs/: a deployable site that honors DOCS_BASE so it mounts under the portal
           # prefix. astro `base` derives from DOCS_BASE, and the Dockerfile declares ARG
           # DOCS_BASE and serves the built (flat) site UNDER that prefix.
