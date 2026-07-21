@@ -27,7 +27,7 @@ on:
         type: string
         default: '@psa-department-of-engineering'
       runner:
-        description: Runner to execute on. Defaults to the in-cluster ARC scale set (arc-dind), so library releases cost no GitHub-hosted minutes; pass a GitHub-hosted runner (e.g. ubuntu-latest) to keep a caller off homelab uptime. (ADR-0001 originally defaulted this GitHub-hosted for release uptime-independence; overridden to move all CI onto ARC and off GitHub billing.)
+        description: Runner to execute on. Defaults to the in-cluster ARC scale set (decisions/0001 - all CI on ARC runners, never GitHub-hosted); pass a GitHub-hosted runner (e.g. ubuntu-latest) only to deliberately keep a caller off homelab uptime.
         type: string
         default: arc-dind
 
