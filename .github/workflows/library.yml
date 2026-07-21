@@ -27,7 +27,7 @@ on:
         type: string
         default: '@psa-department-of-engineering'
       runner:
-        description: Runner to execute on. Defaults to the in-cluster ARC scale set (decisions/0001 - all CI on ARC runners, never GitHub-hosted); pass a GitHub-hosted runner (e.g. ubuntu-latest) only to deliberately keep a caller off homelab uptime.
+        description: Runner to execute on. Defaults to the in-cluster ARC scale set (homelab-platform ADR-037 - all CI on ARC runners, never GitHub-hosted); pass a GitHub-hosted runner (e.g. ubuntu-latest) only to deliberately keep a caller off homelab uptime.
         type: string
         default: arc-dind
 
