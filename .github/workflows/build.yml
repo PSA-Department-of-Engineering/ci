@@ -8,13 +8,14 @@
 # platform repo (docs-only) and a full app share one workflow. CI never deploys:
 # promotion is ArgoCD Image Updater (ADR-022).
 #
-# Before any release, a conformance job audits the repo against the REF-Homelab
-# section 4 app contract (devops/, k8s/, docs/ that honors DOCS_BASE, README sections,
-# .env.example, intent.yaml) and runs csd-intent on its intent.yaml. This is where the
-# platform's per-app repo-contract tests run — in the app's own CI, where its files are
-# checked out — since a platform CI runner has no sibling app clones. release `needs`
-# it, so a non-conformant repo is never tagged or published. The docs-only platform
-# portal is not an onboardable app and opts out with app-contract: false.
+# Before any release, a conformance job runs the per-app conformance suite from
+# this repo's conformance/ directory (the single home of the chart-side
+# INT-HOMELAB claims: devops/, k8s/, docs/ honoring DOCS_BASE, README sections,
+# .env.example, intent.yaml, route and identity bindings) and audits the app's
+# intent.yaml with csd-intent. It runs in the app's own CI, where the app is
+# checked out; the platform repo keeps the install-side suite. release `needs`
+# it, so a non-conformant repo is never tagged or published. The docs-only
+# platform portal is not an onboardable app and opts out with app-contract: false.
 #
 # App images come from devops/docker-compose.yml, a repo's single source of truth
 # for the images it ships (ADR-018): every service with a build: section is built
@@ -76,14 +77,17 @@ on:
 # through unchanged.
 
 jobs:
-  # REF-Homelab section 4: the onboardable-app repo contract. The platform's own
-  # tests/test_repo_conformance.py checks this (INT-HOMELAB-002..009, 018) against
-  # sibling clones and pytest.skips when they are absent — a platform CI runner has
-  # none, so the authoritative gate lives HERE, in each app's own CI, where its files
-  # are actually checked out. release `needs` this, so a non-conformant repo is never
-  # tagged or published. The docs-only platform portal is not an onboardable app: it
-  # passes app-contract: false, which skips every step below. The job still runs and
-  # succeeds (no executed step fails), so its release proceeds.
+  # REF-Homelab section 4: the onboardable-app repo contract. The authoritative
+  # per-app suite is conformance/ in THIS repo (pytest + intent markers), run
+  # here in each app's own CI, where the app is checked out; the platform repo
+  # keeps only the install-side suite (its deploy-* branches), which an app
+  # runner cannot read (the platform repo is private and the org token reads
+  # packages only). One suite, one home: a hand-mirrored copy of the checks in
+  # this workflow is the drift that let 17 claims go unenforced. release `needs`
+  # this, so a non-conformant repo is never tagged or published. The docs-only
+  # platform portal is not an onboardable app: it passes app-contract: false,
+  # which skips every step below. The job still runs and succeeds (no executed
+  # step fails), so its release proceeds.
   conformance:
     runs-on: ${{ inputs.runner }}
     permissions:
@@ -97,189 +101,40 @@ jobs:
         with:
           python-version: "3.13"
 
-      # csd-intent is the audit CLI (PyYAML installs with it). Git-tag install from
-      # csd-library — the same pin the platform repo records in its pyproject.toml.
+      # csd-intent is the audit CLI (PyYAML installs with it); pytest-intent
+      # supplies the @intent decorator the suite imports. Git-tag installs from
+      # csd-library — the same pins the platform repo records in its pyproject.toml.
       - if: ${{ inputs.app-contract }}
-        name: Install csd-intent
+        name: Install csd-intent, pytest, and the intent runtime
         run: |
           python -m pip install --upgrade pip
-          python -m pip install \
+          python -m pip install pytest pyyaml \
+            "pytest-intent @ git+https://github.com/PSA-Department-of-Engineering/csd-library.git@pytest-intent-v0.2.0#subdirectory=pytest-intent" \
             "csd-intent @ git+https://github.com/PSA-Department-of-Engineering/csd-library.git@csd-intent-v0.3.0#subdirectory=csd-intent"
 
-      # Mirror tests/test_repo_conformance.py: report every violation, then fail once,
-      # so a maintainer sees the whole gap in one run instead of one error at a time.
-      - if: ${{ inputs.app-contract }}
-        name: Audit repo against the REF-Homelab section 4 contract
-        run: |
-          set -uo pipefail
-          fail=0
-          bad() { echo "  x $1"; fail=1; }
-          echo "REF-Homelab section 4 app-repo contract:"
-
-          # devops/: one Dockerfile, a compose that builds FROM it, and no image-push
-          # script (publishing is CI's job, never a local script).
-          [ -f devops/Dockerfile ] || bad "missing devops/Dockerfile (INT-HOMELAB-002)"
-          if [ -f devops/docker-compose.yml ]; then
-            grep -q 'devops/Dockerfile' devops/docker-compose.yml \
-              || bad "devops/docker-compose.yml must build FROM devops/Dockerfile (INT-HOMELAB-003)"
-          else
-            bad "missing devops/docker-compose.yml (INT-HOMELAB-003)"
-          fi
-          if [ -d devops ]; then
-            push=$(find devops -maxdepth 1 -type f 2>/dev/null | grep -i push | grep -i image || true)
-            [ -z "$push" ] || bad "image-push script in devops/ (CI publishes; the repo only builds): ${push//$'\n'/ }(INT-HOMELAB-004)"
-          fi
-
-          # k8s/: a Helm chart, not loose manifests.
-          for f in Chart.yaml templates values.yaml; do
-            [ -e "k8s/$f" ] || bad "k8s/ is not a complete Helm chart, missing k8s/$f (INT-HOMELAB-005)"
-          done
-
-          # Homepage tile discovery: the app's tile hangs off its <app>-docs docs HTTPRoute, and
-          # Homepage derives the tile's pod-status selector from that route NAME (it looks for a pod
-          # labelled app.kubernetes.io/name=<app>-docs). So the docs Deployment must label its pod
-          # app.kubernetes.io/name: <chart>-docs inline (the fleet convention), or the tile reads
-          # NOT FOUND though the docs are healthy. Files with a Deployment only, so the docs Service
-          # is not scanned; same docs heuristic INT-HOMELAB-030 uses to except the docs workload.
-          if [ -d k8s/templates ]; then
-            while IFS= read -r f; do
-              [ -n "$f" ] || continue
-              grep -qE 'app\.kubernetes\.io/component:[[:space:]]*docs|-docs' "$f" || continue
-              grep -qE 'app\.kubernetes\.io/name:.*-docs' "$f" \
-                || bad "docs Deployment $f labels its pod with the bare app name; the app's <app>-docs homepage tile can't find the pod and reads NOT FOUND. Label it app.kubernetes.io/name: <chart>-docs inline, not via the shared labels/selectorLabels helper (INT-HOMELAB-048)"
-            done < <(grep -rlE 'kind:[[:space:]]*Deployment' k8s/templates 2>/dev/null)
-          fi
-
-          # --- chart delivery-wiring guards (INT-HOMELAB-045..047): three defect classes
-          # autonomous deliveries shipped and only live traffic caught (ImagePullBackOff, an
-          # NXDOMAIN host, a self-upgrading sidecar). Grep mirrors of the same-named
-          # tests/test_repo_conformance.py checks, run HERE so the release fails before the app
-          # is ever deployed, instead of the delivery stopping degraded at live verification.
-
-          # 045: every Deployment template references imagePullSecrets, or its pods pull
-          # anonymously from private GHCR and land in ImagePullBackOff (token-racing-track,
-          # shattered-catacombs) — invisible until the app is live. Per-file, like the docs-label
-          # check above.
-          if [ -d k8s/templates ]; then
-            while IFS= read -r f; do
-              [ -n "$f" ] || continue
-              grep -q 'imagePullSecrets' "$f" \
-                || bad "Deployment template $f references no imagePullSecrets; its pods pull anonymously and ImagePullBackOff on private GHCR. Reference the values-driven list (default: [name: ghcr-pull]) (INT-HOMELAB-045)"
-            done < <(grep -rlE 'kind:[[:space:]]*Deployment' k8s/templates 2>/dev/null)
-          fi
-
-          # 046: an app HTTPRoute must attach to the app's own platform Gateway (parentRef
-          # pinning namespace network, never an invented gateway) AND carry the app hostname,
-          # or external-dns (gateway-httproute source) registers nothing and the host stays
-          # NXDOMAIN. Both shapes shipped live (token-racing-track: a hallucinated
-          # homelab-gateway/gateway-system parent with no hostnames; shattered-catacombs: the
-          # namespace line dropped). The namespace check is values-driven-or-literal like the
-          # test, case-insensitive on the values side so a flat `gatewayNamespace: network` reads
-          # the same as a nested `gateway.namespace`.
-          if [ -d k8s/templates ]; then
-            routes=$(grep -rlE 'kind:[[:space:]]*HTTPRoute' k8s/templates 2>/dev/null || true)
-            if [ -n "$routes" ]; then
-              for inv in homelab-gateway gateway-system; do
-                grep -qsF "$inv" $routes \
-                  && bad "HTTPRoute references '$inv', which is not a platform Gateway; the app route attaches to the app's own Gateway (name = the app, namespace = network) (INT-HOMELAB-046)"
-              done
-              grep -qs 'hostnames:' $routes \
-                || bad "no HTTPRoute template carries hostnames:; external-dns registers DNS from the route hostname, so the app host stays NXDOMAIN (INT-HOMELAB-046)"
-              { [ -f k8s/values.yaml ] && grep -qiE '^[[:space:]]*[a-z0-9_-]*host[a-z0-9_-]*:' k8s/values.yaml; } \
-                || bad "k8s/values.yaml declares no host key for the app route to carry; the chart must parameterize the hostname (a default for a single-install app, or empty and set per-install on the deploy branch for an install-agnostic app), so external-dns has a value to register (INT-HOMELAB-046)"
-              { grep -qsE 'namespace:[[:space:]]*network\b' $routes \
-                || { [ -f k8s/values.yaml ] && grep -qsiE 'namespace:[[:space:]]*network\b' k8s/values.yaml; }; } \
-                || bad "the app route's parentRef pins no 'network' namespace (values-driven gateway namespace or literal); without it the ref defaults to the app namespace, no Gateway accepts the route, and DNS never registers (INT-HOMELAB-046)"
-            fi
-          fi
-
-          # 047: no FULL third-party image ref (one carrying a registry/path, unlike the
-          # first-party repository+tag split the deploy branch pins and Image Updater maintains)
-          # may float on :latest — it self-upgrades on the registry's schedule and cannot be
-          # rolled back (an oauth2-proxy; token-racing-track shipped one). Full refs ending
-          # :latest, in values.yaml or literal in a template ({{ }}-templated refs are skipped by
-          # excluding '{'), are the offenders; a bare `tag: latest` has no '/' and is inert.
-          latest=""
-          if [ -f k8s/values.yaml ]; then
-            hits=$(grep -oE '[^[:space:]"]+/[^[:space:]"]+:latest' k8s/values.yaml || true)
-            [ -z "$hits" ] || latest="$latest values.yaml:{${hits//$'\n'/ }}"
-          fi
-          if [ -d k8s/templates ]; then
-            hits=$(grep -rhoE 'image:[[:space:]]*"?[^[:space:]"{]+/[^[:space:]"{]+:latest' k8s/templates 2>/dev/null || true)
-            [ -z "$hits" ] || latest="$latest templates:{${hits//$'\n'/ }}"
-          fi
-          [ -z "$latest" ] || bad "third-party image reference(s) floating on :latest (self-upgrading, un-rollbackable; pin a version):$latest (INT-HOMELAB-047)"
-
-          # 057: an oauth2-proxy sidecar fronts SSO with --provider=oidc, never keycloak-oidc
-          # (which audience-checks the access token, whose Keycloak default aud is 'account'
-          # not the client, so every login callback 500s), and the routes flag is the SINGULAR
-          # --api-route (the pluralized --api-routes is an unknown flag that crash-loops the
-          # proxy). Both shipped live (keycloak-oidc on Alexandria and token-racing-track;
-          # --api-routes on Alexandria). Anchored to the arg line so an explanatory comment
-          # naming the wrong flag is not itself flagged. Grep mirror of the same-named
-          # tests/test_repo_conformance.py check; runs HERE so the release fails before deploy.
-          if [ -d k8s/templates ]; then
-            grep -rEqs -e '^[[:space:]]*-[[:space:]]*--provider=keycloak-oidc' k8s/templates \
-              && bad "oauth2-proxy sets --provider=keycloak-oidc; Keycloak's default access-token aud is 'account', so every login callback 500s. Use --provider=oidc, which validates the ID token (aud = client-id) (INT-HOMELAB-057)"
-            grep -rEqs -e '^[[:space:]]*-[[:space:]]*--api-routes' k8s/templates \
-              && bad "oauth2-proxy uses the pluralized --api-routes, an unknown flag that crash-loops the proxy; the flag is the singular --api-route (INT-HOMELAB-057)"
-          fi
-
-          # docs/: a deployable site that honors DOCS_BASE so it mounts under the portal
-          # prefix. astro `base` derives from DOCS_BASE, and the Dockerfile declares ARG
-          # DOCS_BASE and serves the built (flat) site UNDER that prefix.
-          if [ -d docs ]; then
-            [ -f docs/Dockerfile ] || bad "docs/ has no Dockerfile (INT-HOMELAB-006)"
-            cfg=$(ls docs/astro.config.* 2>/dev/null | head -1 || true)
-            if [ -n "$cfg" ]; then
-              { grep -q 'DOCS_BASE' "$cfg" && grep -Eq 'base[[:space:]]*:' "$cfg"; } \
-                || bad "docs/astro.config.* must derive Astro base from DOCS_BASE (INT-HOMELAB-018)"
-            else
-              bad "docs/ has no astro.config.* (not a Starlight/Astro site) (INT-HOMELAB-006)"
-            fi
-            if [ -f docs/Dockerfile ]; then
-              grep -q 'ARG DOCS_BASE' docs/Dockerfile \
-                || bad "docs/Dockerfile must declare ARG DOCS_BASE (INT-HOMELAB-018)"
-              grep -Eq 'html/?\$\{?DOCS_BASE\}?' docs/Dockerfile \
-                || bad "docs/Dockerfile must serve the built site under DOCS_BASE (INT-HOMELAB-018)"
-            fi
-          else
-            bad "missing docs/ (INT-HOMELAB-006)"
-          fi
-
-          # README contract sections (case-insensitive substring, matching the test).
-          if [ -f README.md ]; then
-            for s in "run with docker" "develop without docker" "layout"; do
-              grep -qi "$s" README.md || bad "README.md missing required section: '$s' (INT-HOMELAB-007)"
-            done
-          else
-            bad "missing README.md (INT-HOMELAB-007)"
-          fi
-
-          # Config contract and the CSD entry point.
-          [ -f .env.example ] || bad "missing .env.example (INT-HOMELAB-008)"
-          [ -f intent.yaml ] || bad "missing root intent.yaml (INT-HOMELAB-009)"
-
-          # .github/workflows/: an app never provides the GitHub Packages token itself. The
-          # token lives once, in the shared setup-node-auth composite; an app calls it (or
-          # thin-calls the reusable test.yml) and never assigns NODE_AUTH_TOKEN. One
-          # invariant, not a blocklist of spellings (mirrors tests/test_repo_conformance.py).
-          if [ -d .github/workflows ]; then
-            tok=$(grep -rlE 'NODE_AUTH_TOKEN[[:space:]]*[:=]' .github/workflows 2>/dev/null || true)
-            [ -z "$tok" ] || bad "workflow(s) set NODE_AUTH_TOKEN themselves (call the shared setup-node-auth composite instead): ${tok//$'\n'/ }(INT-HOMELAB-039)"
-          fi
-
-          if [ "$fail" -ne 0 ]; then
-            echo "Repo violates the REF-Homelab section 4 contract (see the lines above)."
-            exit 1
-          fi
-          echo "  OK: section 4 contract satisfied"
-
-      # Audit the app's own intent.yaml: CSD-INTENT-01 schema + every active claim
-      # attested by a test marker somewhere in the repo (default --fail-on any).
+      # Audit the app's own intent.yaml BEFORE the suite checkout below lands in
+      # the tree: csd-intent scans the whole checkout for markers, and the
+      # suite's own INT-HOMELAB markers must not enter this app's audit.
+      # CSD-INTENT-01 schema + every active claim attested (default --fail-on any).
       - if: ${{ inputs.app-contract }}
         name: Audit intent.yaml (csd-intent)
         run: csd-intent .
+
+      # The per-app conformance suite, from this repo (the single home of the
+      # chart-side INT-HOMELAB claims). Checked out inside the app workspace
+      # only after the intent audit above has already read the tree.
+      - if: ${{ inputs.app-contract }}
+        uses: actions/checkout@v4
+        with:
+          repository: PSA-Department-of-Engineering/ci
+          path: .ci-suite
+
+      - if: ${{ inputs.app-contract }}
+        name: Per-app conformance suite (REF-Homelab section 4)
+        env:
+          CONFORMANCE_APP_DIR: ${{ github.workspace }}
+          CONFORMANCE_APP_NAME: ${{ github.event.repository.name }}
+        run: pytest .ci-suite/conformance -q
 
   # The org's two commit invariants (Conventional-Commits subject + no co-author
   # trailer), enforced where every release flows: semantic-release derives the version

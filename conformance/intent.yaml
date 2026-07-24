@@ -1,0 +1,328 @@
+# The chart-side per-app claims of the REF-Homelab section 4 app contract
+# (CSD-INTENT-01 schema), attested by conformance/test_repo_conformance.py
+# and run by the shared build workflow in each app's own CI. The
+# install-side claims stay in the platform repo beside its own suite.
+
+INT-HOMELAB-002:
+  version: 1.0.0
+  status: active
+  statement: "Every deploy repo MUST contain devops/Dockerfile at its root."
+  rationale: "The production image is built from a single multi-stage Dockerfile in devops/ (ADR-018 Decision A); its absence means the repo has no defined image build."
+  test:
+    scope: integration
+    component: RepoStandard
+    type: invariant
+  criticality: critical
+
+INT-HOMELAB-003:
+  version: 1.0.0
+  status: active
+  statement: "Every deploy repo's devops/docker-compose.yml MUST build from devops/Dockerfile, the same Dockerfile that ships the image, rather than defining a separate image."
+  rationale: "One Dockerfile for both local compose and the shipped image removes drift between what runs locally and what deploys (ADR-018 Decision A, the single-source rule)."
+  test:
+    scope: integration
+    component: RepoStandard
+    type: invariant
+  criticality: high
+
+INT-HOMELAB-004:
+  version: 1.0.0
+  status: active
+  statement: "A deploy repo's devops/ directory MUST NOT contain an image-push script; publishing to GHCR is CI's responsibility, never a local script."
+  rationale: "Hand-pushing an image from a dev box bypasses CI and audit, the build-side equivalent of a hand-run kubectl apply (ADR-018 Decision A, ADR-015)."
+  test:
+    scope: integration
+    component: RepoStandard
+    type: invariant
+  criticality: high
+
+INT-HOMELAB-005:
+  version: 1.0.0
+  status: active
+  statement: "Every deploy repo MUST ship a Helm chart at k8s/ (k8s/Chart.yaml, k8s/templates/, and k8s/values.yaml), not loose manifests."
+  rationale: "Deployment is via a versioned chart (ADR-014, ADR-015, ADR-018 Decision B); loose manifests cannot be referenced or rolled like a chart."
+  test:
+    scope: integration
+    component: RepoStandard
+    type: invariant
+  criticality: high
+
+INT-HOMELAB-006:
+  version: 1.0.0
+  status: active
+  statement: "Every deploy repo MUST ship a deployable docs/ site: docs/ MUST contain a Dockerfile and an Astro config (astro.config.*)."
+  rationale: "Docs are a first-class deployable served from the central portal (ADR-018 Decisions C and E); a docs site that only runs via npm run dev is not deployable."
+  test:
+    scope: integration
+    component: RepoStandard
+    type: invariant
+  criticality: high
+
+INT-HOMELAB-007:
+  version: 1.0.0
+  status: active
+  statement: "Every deploy repo's README.md MUST document a Run with Docker path, a Develop without Docker path, and a Layout section."
+  rationale: "These sections are the contract so any repo can be deployed, developed, and navigated without tribal knowledge (ADR-018 Decision D)."
+  test:
+    scope: integration
+    component: RepoStandard
+    type: contract
+  criticality: medium
+
+INT-HOMELAB-008:
+  version: 1.0.0
+  status: active
+  statement: "Every deploy repo MUST contain a .env.example documenting the environment variables it reads."
+  rationale: ".env.example is the discoverable configuration contract for the app. Secret-valued variables are a subset; their real values are injected in-cluster as Kubernetes Secrets (ADR-017), not via .env in production. The committed example makes the env surface known without leaking values (ADR-018 Decision F)."
+  test:
+    scope: integration
+    component: RepoStandard
+    type: contract
+  criticality: medium
+
+INT-HOMELAB-009:
+  version: 1.0.0
+  status: active
+  statement: "Every deploy repo MUST contain a root intent.yaml conforming to CSD-INTENT-01, declaring the app's own intent claims."
+  rationale: "CSD compliance: every project declares its machine-checkable intent at the root, separate from any docs/intent.yaml. The file is the CSD entry point; csd-intent audits its claims and their attestation (ADR-018)."
+  test:
+    scope: integration
+    component: RepoStandard
+    type: invariant
+  criticality: high
+
+INT-HOMELAB-010:
+  version: 1.0.0
+  status: active
+  statement: "Every deploy repo's docs/ MUST ship at least an Overview page (type: Overview) and a Components or Architecture page (type: Reference)."
+  rationale: "Consistency across project docs: every site has the same baseline structure (what the project is and how its parts fit), mirroring the platform's own docs (ADR-018 Decisions C and E)."
+  test:
+    scope: integration
+    component: RepoStandard
+    type: contract
+  criticality: medium
+
+INT-HOMELAB-013:
+  version: 1.0.0
+  status: active
+  statement: "Every deploy repo MUST ship .github/workflows/build.yml that calls the shared reusable workflow PSA-Department-of-Engineering/ci/.github/workflows/build.yml, rather than a copied build."
+  rationale: "One reusable build/release workflow is the single source of build truth (ADR-019); a per-repo copy drifts. The thin caller is how a repo opts into CI without duplicating it, the build-side mirror of the platform-side ArgoCD Application (INT-HOMELAB-011)."
+  test:
+    scope: integration
+    component: RepoStandard
+    type: invariant
+  criticality: high
+
+# --- shared PostgreSQL isolation (ADR-026); database claims are 014..017 ---
+
+INT-HOMELAB-018:
+  version: 1.0.0
+  status: active
+  statement: "Every deploy repo's docs MUST honor DOCS_BASE: docs/astro.config.* derives Astro `base` from DOCS_BASE, and docs/Dockerfile declares ARG DOCS_BASE, feeds it into the build, and serves the built site under that prefix."
+  rationale: "App docs mount under the central portal at /apps/<app> via a no-rewrite PathPrefix route (ADR-023). For that to resolve, every asset and link must be prefixed (Astro `base`) AND the built files must live under the prefix inside the image, because Astro's output is flat: `base` rewrites URLs but does not relocate files on disk. A docs site that ignores DOCS_BASE builds at / and collides with the portal's own root pages (ADR-018 Decision C/E). Static file check pre-CI; a build-time assertion that the emitted HTML references /apps/<app> is the CI-era upgrade."
+  test:
+    scope: integration
+    component: RepoStandard
+    type: invariant
+  criticality: high
+
+# --- conventional-commit hook conformance (ADR-024); a RepoStandard claim that the
+# --- app-repo contract (REF-Homelab section 4) now includes, numbered after docs base ---
+
+INT-HOMELAB-019:
+  version: 1.0.0
+  status: active
+  statement: "Every deploy repo MUST commit a .pre-commit-config.yaml carrying a Conventional-Commit check at the commit-msg stage, so the commit convention the version scheme reads (ADR-024) is guarded locally from a fresh clone rather than left to discipline."
+  rationale: "Image and chart versions are computed from Conventional Commits by semantic-release (ADR-024); a malformed message silently yields no release. A committed, bypassable commit-msg hook gives every contributor the same fast local check from a fresh clone, scaffolded once (REF-Homelab section 4) rather than hand-copied per repo. Only the config is committed and testable: the .git/hooks install is per-clone (`pre-commit install`) and not version-controlled, so conformance asserts the config that defines the hook, never its installation."
+  test:
+    scope: integration
+    component: RepoStandard
+    type: contract
+  criticality: medium
+
+# --- deploy-branch delivery conformance (ADR-022, ADR-025) ---
+
+INT-HOMELAB-020:
+  version: 1.0.0
+  status: active
+  statement: "Every deploy repo MUST have a deploy orphan branch on origin carrying per-environment config: dev/ and prod/, each a values.yaml and a Chart.yaml pinning a published chart version."
+  rationale: "ArgoCD watches the deploy branch per environment (ADR-022, ADR-025); promotion is a change to the chart version pinned there, kept separate from code on main. A registered, built app with no deploy branch is never delivered. Checked over git because the branch is orphan and not in the working tree, so it is a local maintainer pre-flight."
+  test:
+    scope: integration
+    component: DeployRegistry
+    type: invariant
+  criticality: high
+
+# --- STARLIGHT docs-bundle conformance (ADR-018 Decision C/E); a RepoStandard claim
+# --- that the docs frontmatter is attested out-of-band, numbered after delivery ---
+
+INT-HOMELAB-022:
+  version: 1.0.0
+  status: active
+  statement: "Every deploy repo's docs/ MUST ship the STARLIGHT intent bundle: a docs/intent.yaml declaring the STARLIGHT claims (INT-STARLIGHT-*), so docs frontmatter is attested consistently rather than silently dropped (the bootstrap-starlight default)."
+  rationale: "The docs site is scaffolded by bootstrap-starlight, which auto-applies the STARLIGHT intent bundle so the page frontmatter (type, title) is machine-checked by vitest-intent meta-tests. A docs/ that drops the bundle (--no-intent) builds the same but stops attesting its frontmatter, and INT-HOMELAB-010's required page types then rest on convention alone. Asserting docs/intent.yaml carries an INT-STARLIGHT- claim keeps the per-app docs attestation consistent with the platform's own, the docs-side complement of the root intent.yaml (INT-HOMELAB-009)."
+  test:
+    scope: integration
+    component: RepoStandard
+    type: invariant
+  criticality: medium
+
+# --- auth-Secret provisioning conformance (ADR-017); a RepoStandard claim pairing a
+# --- fail-closed credential reference with its out-of-band template ---
+
+INT-HOMELAB-023:
+  version: 1.0.0
+  status: active
+  statement: "A deploy repo whose k8s/values.yaml sets a non-empty auth.existingSecret MUST ship k8s/secrets/<name>.env.example declaring that Secret, so a fail-closed app credential is provisioned out of band (apply-secrets.sh) rather than silently absent."
+  rationale: "A fail-closed app (estimatekit, protopane) refuses every protected route with 503 until its auth Secret exists; that Secret is provisioned out of band (ADR-017) from a git-ignored env file, so the committed k8s/secrets/<name>.env.example is the discoverable contract for which keys to supply. A values.yaml that names auth.existingSecret but ships no matching example leaves the credential silently absent — the instance serves nothing and the gap is invisible until deploy. Tying the template to the reference turns that into a test failure. The claim holds vacuously when auth.existingSecret is unset (an app gated elsewhere, or one keying its Secret differently)."
+  test:
+    scope: integration
+    component: RepoStandard
+    type: contract
+  criticality: high
+
+INT-HOMELAB-029:
+  version: 1.0.0
+  status: active
+  statement: "In every deploy repo's k8s/templates/, any Deployment that consumes a ConfigMap via envFrom MUST carry a checksum/config annotation on its pod template hashing the config it consumes, so a ConfigMap-only change rolls the pods that read it."
+  rationale: "Kubernetes does not restart pods when a ConfigMap changes, and env vars injected via envFrom are read only at container start, so without a pod-template trigger a config-only change syncs as a silent no-op: ArgoCD applies the new ConfigMap while the running pods keep the old values, and the gap is invisible until the next image roll. Hashing the consumed config into a checksum/config pod-template annotation (include of the rendered ConfigMap template, or the values that feed it when the ConfigMap renders in the same file as the Deployment, where include would recurse) re-renders the annotation on any config change and rolls the pods. The claim holds vacuously for a Deployment with no envFrom ConfigMap reference (a static docs server reads no env at start): nothing read at start, nothing to roll."
+  test:
+    scope: integration
+    component: RepoStandard
+    type: invariant
+  criticality: high
+
+# --- Operational pause conformance (REF-Homelab section 4); a RepoStandard claim that the
+# --- platform can scale an onboarded app to zero without offboarding it (ADR-030) ---
+
+INT-HOMELAB-030:
+  version: 1.0.0
+  status: active
+  statement: "In every deploy repo's k8s/ chart, values.yaml MUST declare a top-level paused key (default false) and every non-docs workload MUST render its replica count from .Values.paused, so the platform can scale the app to zero by overriding paused on the app's Application. The docs Deployment is excepted and stays served."
+  rationale: "A single node has finite capacity, so an onboarded app is switchable off without being offboarded: paused, it keeps its namespace, routing, database, and identity but runs no workload pods, releasing the compute a running pod reserves, and data is never at stake because pause is not offboarding. The platform pauses an app with a Helm override on its ArgoCD Application (spec.source.helm.valuesObject), an operational platform-owned decision distinct from the version pinning that stays on the deploy branch (ADR-030, amending ADR-022). For the override to take effect the app chart must render every non-docs workload's replicas from .Values.paused; the docs Deployment holds vacuously so documentation stays served while the app is paused."
+  test:
+    scope: integration
+    component: RepoStandard
+    type: invariant
+  criticality: high
+
+# --- App-facing SSO conformance (REF-Homelab; ADR-031): the realm-per-app
+# --- identity contract, the counterpart of the database isolation claims (014..017) ---
+
+INT-HOMELAB-034:
+  version: 1.1.0
+  status: active
+  statement: "Every identity reference in a deploy repo's chart MUST be the app's own: no chart text (values or templates) names another app's keycloak-* artifact; a values auth.oidc block that names its bindings names the app's own (existingSecret exactly keycloak-<app>, clientId exactly <app>, a literal issuer ending /realms/<app>); and a chart that ships an oauth2-proxy sidecar has a Service targeting it. Vacuous for charts with no identity surface."
+  rationale: "Realm-per-app is the isolation contract (INT-HOMELAB-031), and the credential side enforces it physically: keycloak-<app> is minted in the app's own namespace and reflected only to identity, so a chart bound to another app's realm waits forever on a Secret that never arrives (task-api shipped bound to alexandria-main's realm and sat in CreateContainerConfigError for 12 hours; the old check asserted only that SOME secret was wired, so the borrow passed). Each layer engages on the shape actually present, because the fleet keys its gates in more than one values dialect (auth.oidc.enabled, a private/public web split): the foreign-name ban is unconditional text-level and catches the borrow in any dialect, the binding equalities bind whenever the canonical block names them, and the Service check keeps a shipped proxy from being routed around."
+  test:
+    scope: integration
+    component: RepoStandard
+    type: invariant
+  criticality: high
+
+INT-HOMELAB-037:
+  version: 1.0.0
+  status: active
+  statement: "In a deploy repo whose OIDC gate skips a machine path (its oauth2-proxy passes --skip-auth-route for /mcp), the workload MUST also set --skip-auth-strip-headers=false on that proxy AND scope the app's own gate to that path (an <APP>_AUTH_SCOPE=mcp env), so the /mcp machine door keeps HTTP Basic for non-interactive agents while the human surfaces get OIDC. Vacuous for a chart whose proxy skips no machine path."
+  rationale: "An MCP client is a non-interactive agent that cannot complete a browser login, so /mcp keeps a machine credential while the human surfaces move to SSO. Two things make that correct and neither is visible in a passing human-login: --skip-auth-strip-headers defaults to true and would strip the client's Authorization header on the skipped route (silently breaking the Basic gate), and the app must narrow its own gate to /mcp rather than serving it open behind the skipped proxy. Binding both to the presence of the /mcp skip turns an un-live-testable trap into a gate (ADR-031)."
+  test:
+    scope: integration
+    component: RepoStandard
+    type: invariant
+  criticality: high
+
+INT-HOMELAB-039:
+  version: 1.0.0
+  status: active
+  statement: "No app workflow MAY provide the GitHub Packages token itself (assign NODE_AUTH_TOKEN). The @psa-department-of-engineering credential lives once, in the shared setup-node-auth composite; an app's node jobs call the composite and at most pass secrets.PACKAGES_READ_TOKEN in as an input, but never set the token variable itself."
+  rationale: "The token counterpart of the build thin-caller rule (INT-HOMELAB-013). A delivery's build phase once hand-wrote a bespoke ci.yml that set a NODE_AUTH_TOKEN secret which did not exist; CI failed closed and the phase degraded. Asserting the single invariant - the app never sets the token variable - rather than banning particular spellings closes the gap robustly and kills the per-repo duplication (ADR-019, REF-Homelab section 4)."
+  test:
+    scope: integration
+    component: RepoStandard
+    type: invariant
+  criticality: high
+
+# --- shared-credential-name + SET-role isolation (ADR-026, sabbito-bazarrito#7): the
+# --- two provisioning-Job guarantees a name-substituting mirror silently drops when it
+# --- copies the wrong reference; the mirror-side complement of the ownership claims (014..017) ---
+
+INT-HOMELAB-045:
+  version: 1.0.0
+  status: active
+  statement: "Every Deployment template in an app chart MUST reference imagePullSecrets (values-driven, defaulting to the reflected ghcr-pull), so pods present the pull credential to private GHCR instead of pulling anonymously."
+  rationale: "The fleet's images are private; network/ghcr-pull auto-reflects into every namespace (INT-HOMELAB-044) but a pod only USES it if the chart mounts it. Two autonomous deliveries (token-racing-track, shattered-catacombs) shipped charts without the reference and landed in ImagePullBackOff with anonymous-401 pulls, a failure invisible until the app is live. The check runs in each repo's own CI conformance job, so the release that would ship the defect fails instead."
+  test:
+    scope: integration
+    component: DeployRepoChart
+    type: invariant
+  criticality: critical
+
+INT-HOMELAB-046:
+  version: 1.1.0
+  status: active
+  statement: "EVERY HTTPRoute in an app chart MUST attach to the app's own platform Gateway: each parentRef name is the app (literally, or via .Chart.Name/.Release.Name), pinning namespace network, and the chart MUST carry the app hostname from a values-driven host key it exposes (defaulted per install for a single-install app, or empty and set on the deploy branch for an install-agnostic one; the shared check pins no zone of its own). A route parenting any other Gateway - invented or platform-owned - is rejected by the same rule."
+  rationale: "Domain registration is route-driven (external-dns --source=gateway-httproute): a route with no hostname registers nothing, and a parentRef that omits the network namespace or names a gateway that is not the app's own is never Accepted, leaving the host NXDOMAIN. Name-equals-app replaces a blocklist of previously-shipped bad names, because the blocklist only ever encoded past failures: token-racing-track's hallucinated homelab-gateway/gateway-system parent was blocked, and then task-api and alexandria-main shipped chart copies of the platform-owned docs route parenting a nonexistent foundry-docs gateway, which no blocklist named - two ArgoCD Applications claimed one resource and the shared-resource conflict wedged the install's whole tenants sync, freezing every wave behind it (RBAC, credential generators) for 12 hours. A platform-owned route lives in teams/<app>/ on the install branch, never in the chart; per-file assertion keeps a correct app route in one file from masking a broken route in another. The check runs in each repo's own CI conformance job, so a release carrying any of these shapes fails before it is ever deployed."
+  test:
+    scope: integration
+    component: DeployRepoChart
+    type: invariant
+  criticality: critical
+
+INT-HOMELAB-047:
+  version: 1.0.0
+  status: active
+  statement: "No full third-party image reference in an app chart may float on :latest; it must pin a version. First-party images may default to :latest in chart values because the deploy branch pins the served tag (the repository+tag split Image Updater maintains); a third-party sidecar is one full string the deploy values never pin."
+  rationale: "A :latest third-party sidecar (an oauth2-proxy) upgrades itself on the registry's schedule and cannot be rolled back to a known version; token-racing-track shipped one. The distinction is deliberate: the fleet's own images are version-managed by the deploy branch and Image Updater, so their chart-side :latest default is inert, while a third-party ref has no other pinning layer. The check runs in each repo's own CI conformance job, so a release that pins a third-party sidecar to :latest fails before it ships."
+  test:
+    scope: integration
+    component: DeployRepoChart
+    type: invariant
+  criticality: high
+
+INT-HOMELAB-048:
+  version: 1.0.0
+  status: active
+  statement: "An app chart's docs Deployment MUST label its pod app.kubernetes.io/name: <chart>-docs (the fleet's inline convention, which the docs Service selector matches), because the app's homepage tile hangs off the <app>-docs docs HTTPRoute and Homepage (gethomepage.dev) derives the tile's pod-status selector from that route name (it looks for a pod labelled app.kubernetes.io/name=<app>-docs); a docs pod carrying the bare chart name is never found, so the tile renders NOT FOUND though the docs are healthy."
+  rationale: "Homepage sources a discovered route's status from a pod it finds by app.kubernetes.io/name = the route name, and the platform mirrors each app's tile onto its always-public <app>-docs docs route, so the docs pod's name label IS the tile's status key. Three deliveries labelled the docs pod with the bare chart name (falarsemdizernada and shattered-catacombs via the shared labels helper, token-racing-track via selectorLabels), so Homepage looked for <app>-docs, found nothing, and the tiles read NOT FOUND while the docs served fine; 13 of 16 apps already used the inline <chart>-docs convention. The check runs in each repo's own CI conformance job, so a delivery that reintroduces the bare-name helper fails rather than shipping a dead-looking tile."
+  test:
+    scope: integration
+    component: DeployRepoChart
+    type: invariant
+  criticality: medium
+
+INT-HOMELAB-056:
+  version: 1.0.0
+  status: active
+  statement: "An app chart that ships a docs Deployment MUST also ship a docs Service whose name is a valid DNS-1035 label (it starts with a letter) and equals the fleet derivation the platform's docs HTTPRoute targets: <chart>-docs, or svc-<chart>-docs when the chart name starts with a digit."
+  rationale: "The teams-skeleton docs HTTPRoute rendered at onboarding derives its backendRef rather than discovering it (platform-studio's docs_service_name(): <app>-docs, svc- prefixed for a digit-leading app, because Service names are DNS-1035 labels that must start with a letter while an app name may legally lead with a digit), so the chart must create exactly that Service or the route forwards to nothing. 2ez4tv shipped a docs Deployment while its route pointed at '2ez4tv-docs' -- a Service that did not exist and whose name no Service could legally carry -- and no pre-flight row went red: the docs 404'd only live, with the pod healthy the whole time. The check runs in each repo's own CI conformance job, so a chart whose docs Service is missing, misnamed, or illegally named fails before the release cuts; repos with no docs Deployment hold vacuously."
+  test:
+    scope: integration
+    component: DeployRepoChart
+    type: invariant
+  criticality: high
+
+INT-HOMELAB-057:
+  version: 1.0.0
+  status: active
+  statement: "An app chart's oauth2-proxy sidecar MUST set --provider=oidc, never --provider=keycloak-oidc, and MUST use the singular --api-route flag, never the pluralized --api-routes."
+  rationale: "keycloak-oidc audience-checks the access token, whose Keycloak default aud is 'account' rather than the client, so every login callback 500s ('audience [account] does not match'); the generic oidc provider validates the ID token (aud = the client id), which is all a platform SSO gate needs. The routes flag is the singular --api-route; the pluralized --api-routes is an unknown flag that crash-loops the proxy. Both defects shipped live and neither showed on any pre-flight -- keycloak-oidc on Alexandria and token-racing-track, --api-routes on Alexandria -- so the gate turns each into a release failure before the app is deployed. The check is anchored to the argument line, so a comment naming the wrong flag does not itself trip it; it runs in each repo's own CI conformance job, and a chart with no oauth2-proxy holds vacuously."
+  test:
+    scope: integration
+    component: DeployRepoChart
+    type: invariant
+  criticality: high
+
+# --- server-side secret application (ADR-017): the generic applier writes no
+# --- credential into last-applied-configuration; the security counterpart of the
+# --- secret-distribution model, guarding against a silent revert to client-side apply ---
+
+INT-HOMELAB-060:
+  version: 1.0.0
+  status: active
+  statement: "A deploy repo's chart that references a platform-minted credential (keycloak-<app> or pg-app-<app>) MUST have the matching grant in teams/<app>/ on every install branch that declares the app: an identity demand requires the gen-keycloak-<app> generator, a database demand requires gen-pg-app-<app>. Vacuous for charts that demand no platform-minted credential."
+  rationale: "The generate-if-absent credentials exist only because a grant's Job mints them (ADR-034); nothing else ever creates those Secrets. A chart that demands one with no grant on the branch schedules a pod that waits forever on a Secret with no creator, and the gap has no red status anywhere: values parse, templates render, the release publishes, and the failure surfaces days later as CreateContainerConfigError on the cluster (task-api shipped demanding an identity credential no grant provided). The demand side lives in the app repo and the provide side on the install branch, so no single-repo read can see the mismatch; this cross-check reads both, in the app's own CI where the chart is checked out and the install branches are a fetch away."
+  test:
+    scope: integration
+    component: DeployRepoChart
+    type: invariant
+  criticality: critical
