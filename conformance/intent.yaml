@@ -311,18 +311,3 @@ INT-HOMELAB-057:
     component: DeployRepoChart
     type: invariant
   criticality: high
-
-# --- server-side secret application (ADR-017): the generic applier writes no
-# --- credential into last-applied-configuration; the security counterpart of the
-# --- secret-distribution model, guarding against a silent revert to client-side apply ---
-
-INT-HOMELAB-060:
-  version: 1.0.0
-  status: active
-  statement: "A deploy repo's chart that references a platform-minted credential (keycloak-<app> or pg-app-<app>) MUST have the matching grant in teams/<app>/ on every install branch that declares the app: an identity demand requires the gen-keycloak-<app> generator, a database demand requires gen-pg-app-<app>. Vacuous for charts that demand no platform-minted credential."
-  rationale: "The generate-if-absent credentials exist only because a grant's Job mints them (ADR-034); nothing else ever creates those Secrets. A chart that demands one with no grant on the branch schedules a pod that waits forever on a Secret with no creator, and the gap has no red status anywhere: values parse, templates render, the release publishes, and the failure surfaces days later as CreateContainerConfigError on the cluster (task-api shipped demanding an identity credential no grant provided). The demand side lives in the app repo and the provide side on the install branch, so no single-repo read can see the mismatch; this cross-check reads both, in the app's own CI where the chart is checked out and the install branches are a fetch away."
-  test:
-    scope: integration
-    component: DeployRepoChart
-    type: invariant
-  criticality: critical

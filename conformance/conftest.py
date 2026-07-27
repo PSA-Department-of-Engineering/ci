@@ -17,10 +17,10 @@ checkout's parent directory, kept for the (root, name) call shape.
 
 Local pre-flight: run against any app clone with
   CONFORMANCE_APP_DIR=../<app> CONFORMANCE_APP_NAME=<app> pytest conformance -q
-The INT-HOMELAB-060 cross-check additionally reads the platform repo's deploy
-branches when CONFORMANCE_PLATFORM_DIR points at a platform clone, and skips
-without it (app CI has no platform credential; the studio and the local
-pre-flight have the clone).
+Every check here reads the app checkout alone. A rule needing both the app
+and an install branch (the credential demand-grant cross-check) lives in
+platform-studio, which serves the install and reads app repos over the repo
+host; no check in this suite reaches outside the app.
 """
 
 from __future__ import annotations
