@@ -17,11 +17,18 @@
 # it, so a non-conformant repo is never tagged or published. The docs-only
 # platform portal is not an onboardable app and opts out with app-contract: false.
 #
+# The suite judges the checkout as the app named by app-name: the fleet name the
+# install manifest carries, which every platform artifact is keyed on (the app's
+# Gateway, keycloak-<app>, pg-app-<app>). It defaults to the repo name, the same
+# string for most repos; a repo whose name differs from the app it ships names
+# the app explicitly, so the identity checks judge the app rather than the
+# repository that happens to hold it.
+#
 # App images come from devops/docker-compose.yml, a repo's single source of truth
 # for the images it ships (ADR-018): every service with a build: section is built
 # and pushed, named by its compose image:. So a one-image app and a multi-image app
 # (e.g. an API plus web frontends) share this workflow with no per-repo edits. A
-# repo with no compose falls back to a single devops/Dockerfile named <image-name>.
+# repo with no compose falls back to a single devops/Dockerfile named for the app.
 #
 # GHCR repository names must be lowercase; an owner/repo may carry uppercase
 # (e.g. PSA-Department-of-Engineering), so every ref is lowercased before use.
@@ -34,12 +41,21 @@ on:
         description: ARC runner scale set to run on.
         type: string
         default: arc-dind
-      image-name:
-        description: GHCR base name for the docs image and the single-Dockerfile fallback. Defaults to the repo name.
+      app-name:
+        description: >-
+          The app's fleet name: its entry in the install manifest, and the string
+          every platform artifact is keyed on (the app's Gateway, keycloak-<app>,
+          pg-app-<app>). The conformance suite judges the checkout as this app.
+          Defaults to the repo name; a repo whose name differs from the app it
+          ships passes the fleet name here.
         type: string
         default: ${{ github.event.repository.name }}
+      image-name:
+        description: GHCR base name for the docs image and the single-Dockerfile fallback. Empty defaults to the app name.
+        type: string
+        default: ''
       docs-base:
-        description: Base path for the docs site. Empty defaults to /apps/<image-name>; the platform portal passes "/".
+        description: Base path for the docs site. Empty defaults to /apps/<app name>; the platform portal passes "/".
         type: string
         default: ''
       app-contract:
@@ -133,7 +149,7 @@ jobs:
         name: Per-app conformance suite (REF-Homelab section 4)
         env:
           CONFORMANCE_APP_DIR: ${{ github.workspace }}
-          CONFORMANCE_APP_NAME: ${{ github.event.repository.name }}
+          CONFORMANCE_APP_NAME: ${{ inputs.app-name }}
         run: pytest .ci-suite/conformance -q
 
   # The org's two commit invariants (Conventional-Commits subject + no co-author
@@ -164,7 +180,9 @@ jobs:
     env:
       # ghcr.io/<owner>; lowercased at point of use (owner may carry uppercase).
       REG: ghcr.io/${{ github.repository_owner }}
-      APP: ${{ inputs.image-name }}
+      # The docs image and the single-Dockerfile fallback are named for the app;
+      # image-name overrides that for a repo whose GHCR base differs.
+      APP: ${{ inputs.image-name || inputs.app-name }}
     steps:
       - uses: actions/checkout@v4
         with:

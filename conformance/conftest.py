@@ -3,14 +3,17 @@
 This suite is the single home of the chart-side app-contract claims and runs in
 each app's own CI, where the app is checked out: the shared build workflow
 checks out this repo beside the app and points the suite at the app via
-CONFORMANCE_APP_DIR (the checkout path, whose basename is the repo name) and
-CONFORMANCE_APP_NAME (the repo name). The install-side claims (manifest parity,
-realm isolation, promotion wiring) stay in the platform repo, which reads its
-own deploy-* branches.
+CONFORMANCE_APP_DIR (the checkout path) and CONFORMANCE_APP_NAME (the app's
+fleet name: its install-manifest entry, and the string every platform artifact
+is keyed on). The two are independent: a repo's name is a GitHub label, the
+fleet name is what the platform binds, and a repo may ship an app named
+differently from itself. The install-side claims (manifest parity, realm
+isolation, promotion wiring) stay in the platform repo, which reads its own
+deploy-* branches.
 
-The tests resolve the app as `repo_root.parent / <name>`, the same shape the
-suite had when it lived beside sibling clones, so `repo_root` here is a phantom
-path whose parent is the app checkout's parent directory.
+The tests read the checkout straight from CONFORMANCE_APP_DIR (see
+`_repo_dir`), so `repo_root` here is a phantom path whose parent is the app
+checkout's parent directory, kept for the (root, name) call shape.
 
 Local pre-flight: run against any app clone with
   CONFORMANCE_APP_DIR=../<app> CONFORMANCE_APP_NAME=<app> pytest conformance -q
@@ -40,18 +43,9 @@ def _require_env(key: str) -> str:
 
 def _app_dir() -> Path:
     path = Path(_require_env("CONFORMANCE_APP_DIR")).resolve()
-    name = _require_env("CONFORMANCE_APP_NAME")
+    _require_env("CONFORMANCE_APP_NAME")
     if not path.is_dir():
         raise RuntimeError(f"CONFORMANCE_APP_DIR {path} is not a directory")
-    # The fleet app name is the lowercase form (foundry.yaml, chart names,
-    # keycloak-<app>); a repo may carry capitals (Alexandria). The tests read
-    # the app dir straight from this env, so only a wholly wrong basename is a
-    # caller bug worth failing loudly on; case differences are fine.
-    if path.name.lower() != name.lower():
-        raise RuntimeError(
-            f"CONFORMANCE_APP_DIR basename {path.name!r} must be the app name "
-            f"{name!r} (case-insensitively); the suite judges exactly that checkout"
-        )
     return path
 
 
