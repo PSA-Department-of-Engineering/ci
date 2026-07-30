@@ -311,3 +311,14 @@ INT-HOMELAB-057:
     component: DeployRepoChart
     type: invariant
   criticality: high
+
+INT-HOMELAB-061:
+  version: 1.0.0
+  status: active
+  statement: "What an onboarded app's repo releases (the compose build: services plus the docs image) MUST match the promotion record the platform's install branches carry for it; the mismatch fails the app's own CI, naming reconcile_app as the repair."
+  rationale: "The Image Updater aliases are a frozen declaration and the released set is a moving truth; their drift silently stops promotion (no crash, no red status). The causer is the app-side change, so the brake lives in the app's own pipeline - the platform's standing report never fails on it - and releasing is blocked until a platform manager realigns the declaration (reconcile_app). Not onboarded holds vacuously; an unreadable platform record is a named skip, never a silent pass."
+  test:
+    scope: integration
+    component: RepoStandard
+    type: invariant
+  criticality: high

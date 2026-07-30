@@ -73,7 +73,22 @@ on:
           opts in must also grant those permissions, or the release step fails.
         type: boolean
         default: false
+      platform-repo:
+        description: >-
+          The platform repository (owner/name) whose deploy-* branches carry the
+          install manifests and each app's promotion record. The reconcile check
+          (INT-HOMELAB-061) reads it read-only; the fleet runs one platform repo,
+          so the default is right for every app.
+        type: string
+        default: rafaelgpires/homelab-platform
     secrets:
+      PLATFORM_READ_TOKEN:
+        required: false
+        description: >-
+          A read-only PAT for the platform repository (contents read), arming the
+          reconcile check (INT-HOMELAB-061): the app's released set against the
+          promotion record the install branches carry for it. Unset, the check
+          reports a named skip - the drift brake is off, never silently green.
       PACKAGES_READ_TOKEN:
         required: false
         description: >-
@@ -150,6 +165,12 @@ jobs:
         env:
           CONFORMANCE_APP_DIR: ${{ github.workspace }}
           CONFORMANCE_APP_NAME: ${{ inputs.app-name }}
+          # The reconcile check (INT-HOMELAB-061): the one deliberate
+          # platform-facing read in this suite, so drift between what the app
+          # releases and what the platform watches bites HERE, on the causer's
+          # desk, blocking the release until reconcile_app realigns them.
+          PLATFORM_REPO: ${{ inputs.platform-repo }}
+          PLATFORM_READ_TOKEN: ${{ secrets.PLATFORM_READ_TOKEN }}
         run: pytest .ci-suite/conformance -q
 
   # The org's two commit invariants (Conventional-Commits subject + no co-author

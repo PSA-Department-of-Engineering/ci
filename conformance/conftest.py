@@ -17,10 +17,14 @@ checkout's parent directory, kept for the (root, name) call shape.
 
 Local pre-flight: run against any app clone with
   CONFORMANCE_APP_DIR=../<app> CONFORMANCE_APP_NAME=<app> pytest conformance -q
-Every check here reads the app checkout alone. A rule needing both the app
-and an install branch (the credential demand-grant cross-check) lives in
-platform-studio, which serves the install and reads app repos over the repo
-host; no check in this suite reaches outside the app.
+Every check here reads the app checkout alone, with ONE deliberate exception:
+the reconcile check (INT-HOMELAB-061) reads the platform repository's deploy-*
+branches read-only (PLATFORM_REPO + PLATFORM_READ_TOKEN), because the drift it
+catches - the app growing past the promotion record the platform holds for
+it - is caused by app-side changes and must bite in the app's own pipeline,
+never fail the platform's standing report. Unarmed (no token), it reports a
+named skip. Rules needing richer install context (the credential demand-grant
+cross-check) stay in platform-studio.
 """
 
 from __future__ import annotations

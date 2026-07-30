@@ -923,3 +923,187 @@ def test_mcp_app_keeps_basic_on_machine_door(repo_root: Path, deploy_repo: str) 
             "(<APP>_AUTH_SCOPE=mcp) so the skipped machine path keeps its own "
             "credential rather than serving open"
         )
+
+
+# --- the reconcile check (INT-HOMELAB-061): the causer's-desk drift brake ----
+# The Image Updater aliases on the install branch are a frozen declaration;
+# what the repo releases is a moving truth. Their drift silently stops
+# promotion (no crash, no red status: the alexandria shape), and it is caused
+# by app-side changes, so the brake lives HERE, in the app's own CI, blocking
+# the release until reconcile_app realigns the declaration. The platform's
+# standing report never fails on it. This is the suite's one deliberate
+# platform-facing read (see conftest): read-only, and unarmed it reports a
+# named skip rather than a silent pass.
+
+_IMAGE_LIST_PREFIX = "argocd-image-updater.argoproj.io/image-list"
+
+
+def _platform_read(path: str) -> bytes | None:
+    """One read-only GET against the platform repo's contents, or None."""
+    import urllib.error
+    import urllib.request
+
+    token = os.environ.get("PLATFORM_READ_TOKEN", "").strip()
+    repo = os.environ.get("PLATFORM_REPO", "").strip()
+    if not token or not repo:
+        return None
+    request = urllib.request.Request(
+        f"https://api.github.com/repos/{repo}/{path}",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github.raw+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            return response.read()
+    except (urllib.error.URLError, OSError):
+        return None
+
+
+def _platform_deploy_branches() -> list[str] | None:
+    """The platform repo's deploy-* branch names, or None when unreadable."""
+    import json
+
+    raw = _platform_read("branches?per_page=100")
+    if raw is None:
+        return None
+    try:
+        branches = json.loads(raw)
+    except ValueError:
+        return None
+    if not isinstance(branches, list):
+        return None
+    return sorted(
+        str(b.get("name"))
+        for b in branches
+        if isinstance(b, dict) and str(b.get("name") or "").startswith("deploy-")
+    )
+
+
+def _local_released_set(repo: Path, app: str) -> set[str] | None:
+    """The GHCR packages this checkout's CI publishes: the compose build:
+    services (named by image: basename) plus <app>-docs when docs/Dockerfile
+    exists. None when the compose cannot be read (INT-HOMELAB-003 owns that
+    failure; this check does not double-report it)."""
+    compose_path = repo / "devops" / "docker-compose.yml"
+    if not compose_path.is_file():
+        return None
+    try:
+        compose = yaml.safe_load(compose_path.read_text(encoding="utf-8"))
+    except yaml.YAMLError:
+        return None
+    if not isinstance(compose, dict):
+        return None
+    released: set[str] = set()
+    services = compose.get("services")
+    if isinstance(services, dict):
+        for name, service in services.items():
+            if not isinstance(service, dict) or not service.get("build"):
+                continue
+            image = str(service.get("image") or name)
+            released.add(image.split("/")[-1].split(":")[0].lower())
+    if (repo / "docs" / "Dockerfile").is_file():
+        released.add(f"{app}-docs")
+    return released
+
+
+def _watched_packages(application_text: str) -> set[str] | None:
+    """The package basenames the Application's image-list aliases watch."""
+    watched: set[str] = set()
+    try:
+        documents = list(yaml.safe_load_all(application_text))
+    except yaml.YAMLError:
+        return None
+    for doc in documents:
+        if not isinstance(doc, dict) or doc.get("kind") != "Application":
+            continue
+        annotations = (doc.get("metadata") or {}).get("annotations") or {}
+        image_list = str(annotations.get(_IMAGE_LIST_PREFIX) or "")
+        for entry in image_list.split(","):
+            entry = entry.strip()
+            if "=" not in entry:
+                continue
+            image = entry.split("=", 1)[1]
+            watched.add(image.split("/")[-1].split(":")[0].lower())
+    return watched or None
+
+
+@intent("INT-HOMELAB-061")
+def test_released_set_reconciled_with_the_platform(
+    repo_root: Path, deploy_repo: str
+) -> None:
+    """INT-HOMELAB-061: what this repo releases matches the promotion record
+    every declaring install carries for it. Growing the released set past the
+    record is an intended interim state exactly once: between this failure and
+    the reconcile_app that realigns the declaration - reconcile FIRST, then
+    merge the compose change, and this check is green on arrival. Not
+    onboarded anywhere holds vacuously (the first release must ship before
+    onboarding can pin it); an unreadable platform record is a named skip."""
+    repo = _repo_dir(repo_root, deploy_repo)
+    released = _local_released_set(repo, deploy_repo)
+    if released is None:
+        pytest.skip(
+            f"{deploy_repo}: devops/docker-compose.yml unreadable; the released "
+            "set has no source (INT-HOMELAB-003 owns that failure)"
+        )
+    branches = _platform_deploy_branches()
+    if branches is None:
+        pytest.skip(
+            f"{deploy_repo}: platform record unreadable (PLATFORM_REPO / "
+            "PLATFORM_READ_TOKEN unset, or the host did not answer); the "
+            "reconcile check is unarmed - a named skip, never a silent pass"
+        )
+    declared_anywhere = False
+    problems: list[str] = []
+    for branch in branches:
+        manifest_raw = _platform_read(f"contents/foundry.yaml?ref={branch}")
+        if manifest_raw is None:
+            continue
+        try:
+            manifest = yaml.safe_load(manifest_raw) or {}
+        except yaml.YAMLError:
+            continue
+        names = {
+            str(entry.get("name"))
+            for role in ("parts", "output")
+            for entry in (manifest.get(role) or [])
+            if isinstance(entry, dict)
+        }
+        if deploy_repo not in names:
+            continue
+        declared_anywhere = True
+        application_raw = _platform_read(
+            f"contents/teams/{deploy_repo}/application.yaml?ref={branch}"
+        )
+        if application_raw is None:
+            problems.append(
+                f"{branch}: declares {deploy_repo} but its "
+                f"teams/{deploy_repo}/application.yaml is unreadable"
+            )
+            continue
+        watched = _watched_packages(application_raw.decode("utf-8", "replace"))
+        if watched is None:
+            problems.append(
+                f"{branch}: {deploy_repo}'s Application carries no readable "
+                "image-list; nothing promotes it"
+            )
+            continue
+        unwatched = sorted(released - watched)
+        phantom = sorted(watched - released)
+        if unwatched or phantom:
+            problems.append(
+                f"{branch}: released {sorted(released)} vs watched {sorted(watched)}"
+                + (f"; released but unwatched (never promotes): {unwatched}" if unwatched else "")
+                + (f"; watched but not released (phantom alias): {phantom}" if phantom else "")
+            )
+    if not declared_anywhere:
+        return  # not onboarded: nothing to reconcile with, holds vacuously
+    assert not problems, (
+        f"{deploy_repo}: the released set is out of step with the platform's "
+        "promotion record; a released image no alias watches pins its first "
+        "tag forever with no crash and no red status. Align with a platform "
+        "manager and run the studio's reconcile_app (fresh image_components), "
+        "then re-run this build:\n  " + "\n  ".join(problems)
+    )
