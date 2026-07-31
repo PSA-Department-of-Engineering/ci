@@ -170,7 +170,11 @@ jobs:
           # releases and what the platform watches bites HERE, on the causer's
           # desk, blocking the release until reconcile_app realigns them.
           PLATFORM_REPO: ${{ inputs.platform-repo }}
-          PLATFORM_READ_TOKEN: ${{ secrets.PLATFORM_READ_TOKEN }}
+          # Falls back to the org's existing PACKAGES_READ_TOKEN (a PAT that
+          # already reads the platform repo), so the check arms with the
+          # credentials the fleet already holds; a dedicated read-only
+          # PLATFORM_READ_TOKEN narrows the blast radius when minted.
+          PLATFORM_READ_TOKEN: ${{ secrets.PLATFORM_READ_TOKEN || secrets.PACKAGES_READ_TOKEN }}
         run: pytest .ci-suite/conformance -q
 
   # The org's two commit invariants (Conventional-Commits subject + no co-author
