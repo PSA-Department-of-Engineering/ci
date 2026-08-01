@@ -35,6 +35,30 @@ def _repo_dir(repo_root: Path, name: str) -> Path:
     return Path(os.environ["CONFORMANCE_APP_DIR"]).resolve()
 
 
+def _sans_comments(text: str) -> str:
+    """The template text with full-line `#` comments dropped (issue #7).
+
+    The chart checks are deliberately textual (Helm templates are not parseable
+    YAML), so every substring heuristic must read code, never commentary: a
+    comment naming a trigger substring once misclassified a Service as the docs
+    Service (INT-HOMELAB-056, wttg3-helper sites-service), and a comment quoting
+    `.Values.paused` once satisfied INT-HOMELAB-030 for a Deployment that never
+    rendered it - the silent variant, worse than the loud one. INT-HOMELAB-057
+    already took this stance by anchoring on the argument line; stripping at the
+    read boundary generalizes it. Full-line comments only: trailing-`#` forms
+    are rare in charts, and stripping them naively would mangle legitimate
+    values containing '#'.
+    """
+    return "\n".join(line for line in text.split("\n") if not line.lstrip().startswith("#"))
+
+
+def _is_docs_component(doc: str) -> bool:
+    """The docs-server heuristic shared by INT-HOMELAB-030/048/056: a document
+    is the docs component when its CODE carries the docs component label or a
+    -docs-suffixed name. Callers pass comment-stripped text (`_sans_comments`)."""
+    return "app.kubernetes.io/component: docs" in doc or "-docs" in doc
+
+
 @intent("INT-HOMELAB-002")
 def test_has_devops_dockerfile(repo_root: Path, deploy_repo: str) -> None:
     """INT-HOMELAB-002: <repo>/devops/Dockerfile exists."""
@@ -343,7 +367,9 @@ def test_configmap_consumers_carry_checksum_annotation(repo_root: Path, deploy_r
     assert templates.is_dir(), f"{deploy_repo}: missing k8s/templates/ (INT-HOMELAB-005)"
     offenders: list[str] = []
     for tpl in sorted((*templates.rglob("*.yaml"), *templates.rglob("*.yml"))):
-        for doc in re.split(r"^---\s*$", tpl.read_text(encoding="utf-8"), flags=re.MULTILINE):
+        for doc in re.split(
+            r"^---\s*$", _sans_comments(tpl.read_text(encoding="utf-8")), flags=re.MULTILINE
+        ):
             if "kind: Deployment" not in doc:
                 continue
             if "envFrom" not in doc or "configMapRef" not in doc:
@@ -381,10 +407,12 @@ def test_workloads_honor_paused(repo_root: Path, deploy_repo: str) -> None:
     assert templates.is_dir(), f"{deploy_repo}: missing k8s/templates/ (INT-HOMELAB-005)"
     offenders: list[str] = []
     for tpl in sorted((*templates.rglob("*.yaml"), *templates.rglob("*.yml"))):
-        for doc in re.split(r"^---\s*$", tpl.read_text(encoding="utf-8"), flags=re.MULTILINE):
+        for doc in re.split(
+            r"^---\s*$", _sans_comments(tpl.read_text(encoding="utf-8")), flags=re.MULTILINE
+        ):
             if "kind: Deployment" not in doc:
                 continue
-            if "app.kubernetes.io/component: docs" in doc or "-docs" in doc:
+            if _is_docs_component(doc):
                 # The docs server stays running while the app is paused: vacuous hold.
                 continue
             if ".Values.paused" not in doc:
@@ -465,10 +493,12 @@ def _chart_dir(repo: Path) -> Path:
 
 
 def _template_texts(repo: Path) -> dict[str, str]:
+    """Template texts with comments stripped at the read boundary (issue #7),
+    so every downstream substring heuristic judges code alone."""
     tdir = _chart_dir(repo) / "templates"
     if not tdir.is_dir():
         return {}
-    return {p.name: p.read_text(encoding="utf-8") for p in sorted(tdir.glob("*.yaml"))}
+    return {p.name: _sans_comments(p.read_text(encoding="utf-8")) for p in sorted(tdir.glob("*.yaml"))}
 
 
 def _values(repo: Path) -> dict:
@@ -537,7 +567,7 @@ def test_docs_deployment_labels_pod_for_homepage_tile(repo_root: Path, deploy_re
             if "kind: Deployment" not in doc:
                 continue
             # The docs server, by the same heuristic INT-HOMELAB-030 uses to except it.
-            if "app.kubernetes.io/component: docs" not in doc and "-docs" not in doc:
+            if not _is_docs_component(doc):
                 continue
             if not name_docs.search(doc):
                 offenders.append(fname)
@@ -582,7 +612,7 @@ def test_docs_deployment_ships_the_route_derived_docs_service(
             for doc in re.split(r"^---\s*$", text, flags=re.MULTILINE):
                 if f"kind: {kind}" not in doc:
                     continue
-                if "app.kubernetes.io/component: docs" not in doc and "-docs" not in doc:
+                if not _is_docs_component(doc):
                     continue
                 found.append((fname, doc))
         return found
@@ -836,12 +866,14 @@ def test_app_oidc_gate_binds_the_apps_own_realm(repo_root: Path, deploy_repo: st
     templates = _template_texts(repo)
     values = _values(repo)
     values_path = repo / "k8s" / "values.yaml"
-    values_text = values_path.read_text(encoding="utf-8") if values_path.is_file() else ""
+    values_text = (
+        _sans_comments(values_path.read_text(encoding="utf-8")) if values_path.is_file() else ""
+    )
     chart_text = "\n".join([values_text, *templates.values()])
 
     own_secret = f"keycloak-{deploy_repo}"
-    # keycloak-oidc is oauth2-proxy's provider identifier (the misconfiguration
-    # INT-HOMELAB-057 flags on arg lines; comments may name it), not an app artifact.
+    # keycloak-oidc is oauth2-proxy's provider identifier, an argument-line value
+    # (the misconfiguration INT-HOMELAB-057 flags), not an app artifact.
     allowed = {own_secret, f"keycloak-realm-{deploy_repo}", "keycloak-oidc"}
     foreign = sorted(
         {
