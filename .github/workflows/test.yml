@@ -1,0 +1,63 @@
+# This repo's own gate (issue #6).
+#
+# Both other workflows here are `on: workflow_call` — they are reusable, invoked
+# by the repos they serve, and nothing in them runs against this repo. So until
+# this file existed, conformance/intent.yaml was audited nowhere: build.yml runs
+# `csd-intent .` against the APP's checkout, deliberately before .ci-suite/ lands
+# in the tree so this suite's INT-HOMELAB markers stay out of the app's audit.
+#
+# That gap matters more here than in a normal repo, because this suite runs in
+# every onboarded app's pipeline. A claim that fails CSD-INTENT-01 schema, an
+# @intent marker naming a claim that does not exist, or a suite that fails to
+# import would reach the whole fleet at once, from a repo that never tested
+# itself.
+#
+# The suite cannot EXECUTE here: it judges one app checkout, named by
+# CONFORMANCE_APP_DIR / CONFORMANCE_APP_NAME, and this repo is not an app. So the
+# gate is the two things that can be checked without one — the audit, and a
+# collection smoke test that exercises every import.
+#
+# Pins mirror build.yml's exactly, so the gate cannot drift from what it gates.
+
+name: test
+
+on:
+    push:
+        branches: [main]
+    pull_request:
+
+jobs:
+    conformance-suite:
+        # ARC, never GitHub-hosted (homelab-platform ADR-037).
+        runs-on: arc-dind
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-python@v5
+              with:
+                  python-version: "3.13"
+
+            # csd-intent is the audit CLI (PyYAML installs with it); pytest-intent
+            # supplies the @intent decorator the suite imports. Same git-tag pins
+            # build.yml installs for the apps this suite judges.
+            - name: Install csd-intent, pytest, and the intent runtime
+              run: |
+                  python -m pip install --upgrade pip
+                  python -m pip install pytest pyyaml \
+                    "pytest-intent @ git+https://github.com/PSA-Department-of-Engineering/csd-library.git@pytest-intent-v0.2.0#subdirectory=pytest-intent" \
+                    "csd-intent @ git+https://github.com/PSA-Department-of-Engineering/csd-library.git@csd-intent-v0.3.0#subdirectory=csd-intent"
+
+            # CSD-INTENT-01 schema, plus every active claim attested by a marker
+            # that names it (default --fail-on any).
+            - name: Audit conformance/intent.yaml (csd-intent)
+              run: csd-intent conformance --tests-dir conformance
+
+            # Import and collection smoke. The env vars are placeholders — nothing
+            # here judges this repo as an app; pointing them at the checkout is
+            # only what lets conftest's fixtures resolve so collection can run.
+            # A suite that fails to import fails here instead of in every app.
+            - name: Collect the suite (import smoke)
+              env:
+                  CONFORMANCE_APP_DIR: ${{ github.workspace }}
+                  CONFORMANCE_APP_NAME: ci
+              run: pytest conformance --collect-only -q
