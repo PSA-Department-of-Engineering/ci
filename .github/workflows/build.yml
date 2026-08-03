@@ -219,17 +219,13 @@ jobs:
       - uses: azure/setup-helm@v4
 
       - name: Log in to GHCR
-        # The workflow token: a push with it auto-connects the package to this
-        # repo (repo-scoped Actions access), and connected packages accept it.
-        # In practice it has ALWAYS been the credential here - the old
-        # `PACKAGES_READ_TOKEN || github.token` fallback read an org secret
-        # that never reaches private repos on a free-plan org, so it resolved
-        # to github.token every time (the `-u <actor>` login name proves
-        # nothing; ghcr ignores it). A write_package denial therefore means
-        # the package's Manage Actions access no longer grants this repo Write
-        # (protopane-app, 2026-08-03); the push helpers in the build step say
-        # so, and retry over PACKAGES_READ_TOKEN wherever that secret truly
-        # exists (repo-level, or org-level on a paid plan).
+        # One credential, one topology: the workflow token. It writes exactly the
+        # packages whose settings grant this repo the Write role (a first push
+        # creates the package with that grant in place), and the caller grants
+        # `packages: write`. There is no PAT path: org secrets never reach
+        # private repos on a free-plan org, so the old PAT-first expression
+        # always resolved to this token anyway. A refused push is therefore
+        # always the same one fault, and the push helper names it.
         run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
       # SemVer from Conventional Commits. No npm publish: just the tag + GitHub release.
@@ -287,31 +283,19 @@ jobs:
           # installation doesn't exist there), so it supplies a read:packages PAT as
           # PACKAGES_READ_TOKEN, which wins when set.
           NODE_AUTH_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN || github.token }}
-          # The denied-push fallback credential (see the GHCR login step).
-          FALLBACK_PAT: ${{ secrets.PACKAGES_READ_TOKEN }}
-          GH_ACTOR: ${{ github.actor }}
         run: |
           set -euo pipefail
 
-          # Registry pushes go through these helpers: try the session login (the
-          # workflow token), and on a refusal re-login once with the PAT and
-          # retry. helm reads the docker credential store, so one re-login
-          # serves both. No PAT configured -> the first failure stands.
-          ghcr_fallback_login() {
-            if [ -z "${FALLBACK_PAT:-}" ]; then
-              echo "==> push refused, and no PACKAGES_READ_TOKEN reaches this job (org"
-              echo "    secrets do not reach PRIVATE repos on a free-plan org, so every"
-              echo "    push here runs on the workflow token). Fix: the GHCR package's"
-              echo "    settings -> Manage Actions access must grant THIS repo the Write"
-              echo "    role; then push a release-cutting commit (a re-run republishes"
-              echo "    nothing once the tag exists)."
-              return 1
-            fi
-            echo "==> push refused with the workflow token; retrying with PACKAGES_READ_TOKEN"
-            echo "$FALLBACK_PAT" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
-          }
+          # Every registry push goes through this helper so the one possible
+          # fault reads as its remedy, not as a raw registry error.
           push_image() {
-            docker push "$1" || { ghcr_fallback_login && docker push "$1"; }
+            docker push "$1" && return 0
+            echo "==> GHCR refused the push. The workflow token is the only credential,"
+            echo "    and it writes only packages whose settings grant THIS repo the"
+            echo "    Write role (package -> Package settings -> Manage Actions access)."
+            echo "    Fix the grant, then push a release-cutting commit - re-running"
+            echo "    this job republishes nothing once the tag exists."
+            return 1
           }
           # cycjimmy/semantic-release-action unconditionally deletes the workspace
           # .npmrc when it finishes (its cleanupNpmrc task, which guards the action's
@@ -390,9 +374,9 @@ jobs:
             push_image "$REG/$APP-docs:latest"
           fi
 
-          # --- Helm chart (chart name comes from k8s/Chart.yaml). ---
+          # --- Helm chart (chart name comes from k8s/Chart.yaml; helm reads the
+          # docker credential store, same token, same grant rule). ---
           if [ -d k8s ]; then
             helm package k8s --version "$VERSION" --app-version "$VERSION" -d /tmp
-            helm push /tmp/*.tgz "oci://$REG/charts" \
-              || { ghcr_fallback_login && helm push /tmp/*.tgz "oci://$REG/charts"; }
+            helm push /tmp/*.tgz "oci://$REG/charts"
           fi
