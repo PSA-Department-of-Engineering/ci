@@ -239,16 +239,19 @@ jobs:
           else
             GH_OPTS='{ "successComment": false, "failComment": false, "failTitle": false }'
           fi
-          # commit-analyzer keeps the angular preset's defaults (feat -> minor, fix -> patch,
-          # BREAKING -> major); the one added rule pins the org-specific `delivery` type to
-          # no release, so the console's deterministic .delivery/ scratch commits never cut a
-          # version (check-commit-hygiene lets `delivery(...)` subjects through the gate).
+          # The conventionalcommits preset, NOT the default angular one: hygiene admits the
+          # spec's `!` breaking-change marker (feat!:), but angular's header pattern cannot
+          # even parse it, so a `!` commit would silently ship nothing. conventionalcommits
+          # reads `!` as major and keeps the familiar defaults (feat -> minor, fix -> patch,
+          # BREAKING CHANGE footer -> major); the one added rule pins the org-specific
+          # `delivery` type to no release, so the console's deterministic .delivery/ scratch
+          # commits never cut a version (check-commit-hygiene lets `delivery(...)` through).
           cat > .releaserc.json <<JSON
           {
             "branches": ["main"],
             "plugins": [
-              ["@semantic-release/commit-analyzer", { "releaseRules": [{ "type": "delivery", "release": false }] }],
-              "@semantic-release/release-notes-generator",
+              ["@semantic-release/commit-analyzer", { "preset": "conventionalcommits", "releaseRules": [{ "type": "delivery", "release": false }] }],
+              ["@semantic-release/release-notes-generator", { "preset": "conventionalcommits" }],
               ["@semantic-release/github", ${GH_OPTS} ]
             ]
           }
@@ -257,6 +260,11 @@ jobs:
       - name: Release
         id: release
         uses: cycjimmy/semantic-release-action@v4
+        with:
+          # The preset above is a package of its own; the action installs it beside
+          # semantic-release (v24 pairs with conventional-changelog-conventionalcommits v8).
+          extra_plugins: |
+            conventional-changelog-conventionalcommits@8
         env:
           GITHUB_TOKEN: ${{ github.token }}
 

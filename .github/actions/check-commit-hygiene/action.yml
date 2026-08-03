@@ -30,8 +30,9 @@ runs:
         zero="0000000000000000000000000000000000000000"
 
         # The commit types this gate accepts: the standard Conventional Commits set both
-        # release engines understand (semantic-release's angular preset and release-please's
-        # conventional-commits defaults share it), plus one org-specific type, `delivery`. A
+        # release engines understand (semantic-release's conventionalcommits preset and
+        # release-please's conventional-commits defaults share it, `!` marker included),
+        # plus one org-specific type, `delivery`. A
         # subject whose type is outside this set is a hard failure: neither release engine
         # recognizes it, so it would silently ship nothing.
         #
