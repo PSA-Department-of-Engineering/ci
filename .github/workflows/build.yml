@@ -219,15 +219,17 @@ jobs:
       - uses: azure/setup-helm@v4
 
       - name: Log in to GHCR
-        # The workflow token first: a push with it auto-connects the package to
-        # this repo (repo-scoped Actions access, no PAT lifecycle to babysit),
-        # and packages already connected accept it. The fleet also holds
-        # packages a PAT push created that were never repo-connected - those
-        # refuse the workflow token, so the push helpers in the build step fall
-        # back to PACKAGES_READ_TOKEN on a denied push and retry. A pipeline
-        # must not care which topology a package landed in (protopane-app's
-        # 2026-08-03 write_package denial, with client and settings unchanged
-        # since its last good push, is exactly that dependence biting).
+        # The workflow token: a push with it auto-connects the package to this
+        # repo (repo-scoped Actions access), and connected packages accept it.
+        # In practice it has ALWAYS been the credential here - the old
+        # `PACKAGES_READ_TOKEN || github.token` fallback read an org secret
+        # that never reaches private repos on a free-plan org, so it resolved
+        # to github.token every time (the `-u <actor>` login name proves
+        # nothing; ghcr ignores it). A write_package denial therefore means
+        # the package's Manage Actions access no longer grants this repo Write
+        # (protopane-app, 2026-08-03); the push helpers in the build step say
+        # so, and retry over PACKAGES_READ_TOKEN wherever that secret truly
+        # exists (repo-level, or org-level on a paid plan).
         run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
       # SemVer from Conventional Commits. No npm publish: just the tag + GitHub release.
@@ -296,7 +298,15 @@ jobs:
           # retry. helm reads the docker credential store, so one re-login
           # serves both. No PAT configured -> the first failure stands.
           ghcr_fallback_login() {
-            [ -n "${FALLBACK_PAT:-}" ] || return 1
+            if [ -z "${FALLBACK_PAT:-}" ]; then
+              echo "==> push refused, and no PACKAGES_READ_TOKEN reaches this job (org"
+              echo "    secrets do not reach PRIVATE repos on a free-plan org, so every"
+              echo "    push here runs on the workflow token). Fix: the GHCR package's"
+              echo "    settings -> Manage Actions access must grant THIS repo the Write"
+              echo "    role; then push a release-cutting commit (a re-run republishes"
+              echo "    nothing once the tag exists)."
+              return 1
+            fi
             echo "==> push refused with the workflow token; retrying with PACKAGES_READ_TOKEN"
             echo "$FALLBACK_PAT" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
           }
