@@ -219,11 +219,16 @@ jobs:
       - uses: azure/setup-helm@v4
 
       - name: Log in to GHCR
-        # Prefer the PACKAGES_READ_TOKEN PAT (it carries write:packages) when a repo
-        # provides one, so it can push to an org GHCR namespace its GITHUB_TOKEN
-        # cannot write (orgs cap the Actions token to read). Personal-namespace
-        # repos and any repo without the secret fall back to GITHUB_TOKEN.
-        run: echo "${{ secrets.PACKAGES_READ_TOKEN || github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+        # The workflow token first: a push with it auto-connects the package to
+        # this repo (repo-scoped Actions access, no PAT lifecycle to babysit),
+        # and packages already connected accept it. The fleet also holds
+        # packages a PAT push created that were never repo-connected - those
+        # refuse the workflow token, so the push helpers in the build step fall
+        # back to PACKAGES_READ_TOKEN on a denied push and retry. A pipeline
+        # must not care which topology a package landed in (protopane-app's
+        # 2026-08-03 write_package denial, with client and settings unchanged
+        # since its last good push, is exactly that dependence biting).
+        run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
       # SemVer from Conventional Commits. No npm publish: just the tag + GitHub release.
       - name: Release config
@@ -280,8 +285,24 @@ jobs:
           # installation doesn't exist there), so it supplies a read:packages PAT as
           # PACKAGES_READ_TOKEN, which wins when set.
           NODE_AUTH_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN || github.token }}
+          # The denied-push fallback credential (see the GHCR login step).
+          FALLBACK_PAT: ${{ secrets.PACKAGES_READ_TOKEN }}
+          GH_ACTOR: ${{ github.actor }}
         run: |
           set -euo pipefail
+
+          # Registry pushes go through these helpers: try the session login (the
+          # workflow token), and on a refusal re-login once with the PAT and
+          # retry. helm reads the docker credential store, so one re-login
+          # serves both. No PAT configured -> the first failure stands.
+          ghcr_fallback_login() {
+            [ -n "${FALLBACK_PAT:-}" ] || return 1
+            echo "==> push refused with the workflow token; retrying with PACKAGES_READ_TOKEN"
+            echo "$FALLBACK_PAT" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
+          }
+          push_image() {
+            docker push "$1" || { ghcr_fallback_login && docker push "$1"; }
+          }
           # cycjimmy/semantic-release-action unconditionally deletes the workspace
           # .npmrc when it finishes (its cleanupNpmrc task, which guards the action's
           # own npm-auth injection). That also removes a repo's COMMITTED root .npmrc
@@ -322,7 +343,7 @@ jobs:
             // build below: app Dockerfiles whose SPA stage consumes
             // @psa-department-of-engineering/* packages mount it; the rest ignore it.
             lines.push(['DOCKER_BUILDKIT=1 docker build', '--secret id=node_auth_token,env=NODE_AUTH_TOKEN', q(ctx), '-f', q(dockerfile), ...args, '-t', q(tag)].join(' '));
-            lines.push('docker push ' + q(tag));
+            lines.push('push_image ' + q(tag));
             n++;
           }
           if (n === 0) console.error('compose has no buildable services; no app image built');
@@ -330,12 +351,13 @@ jobs:
           console.error('image builds generated: ' + n);
           NODE
             node /tmp/gen-build.js
-            bash /tmp/build-images.sh
+            # Sourced, not exec'd: the generated lines call push_image above.
+            . /tmp/build-images.sh
           elif [ -f devops/Dockerfile ]; then
             DOCKER_BUILDKIT=1 docker build -f devops/Dockerfile \
               --secret id=node_auth_token,env=NODE_AUTH_TOKEN \
               -t "$REG/$APP:$VERSION" .
-            docker push "$REG/$APP:$VERSION"
+            push_image "$REG/$APP:$VERSION"
           fi
 
           # --- Docs site: base path /apps/<app> by default, "/" for the platform portal. ---
@@ -353,13 +375,14 @@ jobs:
             DOCKER_BUILDKIT=1 docker build -f docs/Dockerfile \
               --secret id=node_auth_token,env=NODE_AUTH_TOKEN \
               --build-arg DOCS_BASE="$BASE" -t "$REG/$APP-docs:$VERSION" docs/
-            docker push "$REG/$APP-docs:$VERSION"
+            push_image "$REG/$APP-docs:$VERSION"
             docker tag "$REG/$APP-docs:$VERSION" "$REG/$APP-docs:latest"
-            docker push "$REG/$APP-docs:latest"
+            push_image "$REG/$APP-docs:latest"
           fi
 
           # --- Helm chart (chart name comes from k8s/Chart.yaml). ---
           if [ -d k8s ]; then
             helm package k8s --version "$VERSION" --app-version "$VERSION" -d /tmp
-            helm push /tmp/*.tgz "oci://$REG/charts"
+            helm push /tmp/*.tgz "oci://$REG/charts" \
+              || { ghcr_fallback_login && helm push /tmp/*.tgz "oci://$REG/charts"; }
           fi
