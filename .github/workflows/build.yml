@@ -199,7 +199,18 @@ jobs:
     steps:
       - uses: PSA-Department-of-Engineering/ci/.github/actions/secrets-scan@main
 
+  # Never releases from a pull request: a PR head is a candidate, not a version. The
+  # three gates above are safe to run on one (both commit gates already resolve a
+  # pull_request's range against its base), so a caller that wires `pull_request:`
+  # gets conformance, hygiene, and the secrets scan as PR checks while tag, GitHub
+  # release, and every GHCR push stay on the push-to-main path (ADR-019, ADR-024).
+  # Skipping here rather than in each caller keeps the release rule in its one home.
+  #
+  # A no-op for the fleet as it stands: every caller triggers on push alone, and a
+  # skipped job still reports a check run (conclusion: skipped), which the console's
+  # one-shot merge gate folds into green rather than unknown.
   release:
+    if: github.event_name != 'pull_request'
     needs: [conformance, commit-hygiene, secrets-scan]
     runs-on: ${{ inputs.runner }}
     env:
