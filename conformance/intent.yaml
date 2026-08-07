@@ -322,3 +322,14 @@ INT-HOMELAB-061:
     component: RepoStandard
     type: invariant
   criticality: high
+
+INT-HOMELAB-062:
+  version: 1.0.0
+  status: active
+  statement: "A workload consuming a platform-minted credential (keycloak-<app>, pg-app-<app>) MUST consume it non-optionally: no `optional: true` on the secretRef or secretKeyRef that reads it, in any template. Vacuous for a chart naming no platform-minted credential."
+  rationale: "Fail-closed has to mean the pod does not start. `optional: true` inverts it: the container starts with the credential silently absent, so oauth2-proxy exits on incomplete config and crash-loops, and an API dials Postgres with an empty password - both surfacing at the edge as an opaque 503 rather than the CreateContainerConfigError that names the missing Secret. knight-fight shipped both mounts optional and served 503 for sixteen hours while every git-side row stayed green; the pod state that would have explained it was the one thing no evidence-chain link could read. Optionality stays legitimate for an app-owned Secret an operator applies out of band, so the ban is scoped to the credentials only a grant can mint."
+  test:
+    scope: integration
+    component: RepoStandard
+    type: invariant
+  criticality: high

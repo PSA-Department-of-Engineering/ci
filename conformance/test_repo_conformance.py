@@ -920,6 +920,86 @@ def test_app_oidc_gate_binds_the_apps_own_realm(repo_root: Path, deploy_repo: st
         )
 
 
+def _secret_ref_blocks(text: str) -> list[tuple[int, list[str]]]:
+    """Every secretRef/secretKeyRef block, as (line number, block lines).
+
+    A block is the reference line plus the more-indented lines under it, which
+    is where `name:` and `optional:` both live. Helm templates are not
+    parseable YAML, so this reads indentation rather than loading a document.
+    """
+    lines = text.splitlines()
+    blocks: list[tuple[int, list[str]]] = []
+    for i, line in enumerate(lines):
+        if "secretRef:" not in line and "secretKeyRef:" not in line:
+            continue
+        indent = len(line) - len(line.lstrip())
+        body = [line]
+        for nxt in lines[i + 1 :]:
+            if not nxt.strip():
+                body.append(nxt)
+                continue
+            if len(nxt) - len(nxt.lstrip()) <= indent:
+                break
+            body.append(nxt)
+        blocks.append((i + 1, body))
+    return blocks
+
+
+@intent("INT-HOMELAB-062")
+def test_platform_minted_credentials_are_not_optional(
+    repo_root: Path, deploy_repo: str
+) -> None:
+    """INT-HOMELAB-062: no `optional: true` on a platform-minted credential.
+
+    Fail-closed must mean the pod does not start. `optional: true` inverts it -
+    the container starts with the credential absent, so the proxy crash-loops
+    and the API dials Postgres with an empty password, and the edge answers an
+    opaque 503 instead of the CreateContainerConfigError that would name the
+    missing Secret (knight-fight, sixteen hours).
+
+    Scoped to the credentials only a grant can mint: an app-owned Secret an
+    operator applies out of band may legitimately be optional. The reference is
+    matched by the literal name or by the values path that holds it, since
+    charts name it through `.Values`. Vacuous for a chart naming neither.
+    """
+    repo = _repo_dir(repo_root, deploy_repo)
+    values = _values(repo)
+    minted = {f"keycloak-{deploy_repo}", f"pg-app-{deploy_repo}"}
+
+    # The values paths whose leaf is one of the minted names, so a template
+    # saying `{{ .Values.auth.oidc.existingSecret }}` is recognised as naming it.
+    paths: set[str] = set()
+
+    def walk(node: object, trail: tuple[str, ...]) -> None:
+        if isinstance(node, dict):
+            for key, child in node.items():
+                walk(child, (*trail, str(key)))
+        elif isinstance(node, str) and node in minted:
+            paths.add(".".join(trail))
+
+    walk(values, ())
+    templates = _template_texts(repo)
+    hardcoded = any(m in text for m in minted for text in templates.values())
+    if not paths and not hardcoded:
+        pytest.skip(f"{deploy_repo}: chart names no platform-minted credential (vacuous)")
+
+    offenders: list[str] = []
+    for fname, text in templates.items():
+        for lineno, body in _secret_ref_blocks(text):
+            blob = "\n".join(body)
+            names_minted = any(m in blob for m in minted) or any(p in blob for p in paths)
+            if names_minted and re.search(r"optional:\s*true", blob):
+                offenders.append(f"{fname}:{lineno}")
+
+    assert not offenders, (
+        f"{deploy_repo}: a platform-minted credential is consumed with "
+        f"`optional: true` at {offenders}. Fail-closed means the pod does not "
+        "start: drop the flag so a missing credential holds the pod at "
+        "CreateContainerConfigError, where the cause is legible, instead of "
+        "starting a workload that crash-loops behind an opaque 503."
+    )
+
+
 @intent("INT-HOMELAB-037")
 def test_mcp_app_keeps_basic_on_machine_door(repo_root: Path, deploy_repo: str) -> None:
     """INT-HOMELAB-037: an OIDC app whose oauth2-proxy skips a machine path (/mcp)
