@@ -11,8 +11,8 @@
 # npm publishes go to registry.npmjs.org, not GitHub Packages: GitHub Packages requires
 # an auth token to READ even a public package, so a consumer repo cannot be forked and
 # built by anyone outside the org. Public npm needs no read credential at all, which is
-# what makes a consumer repo forkable. Publishing therefore needs a real npm credential
-# (NPM_TOKEN) where the GITHUB_TOKEN used to suffice.
+# what makes a consumer repo forkable. Publishing carries no stored credential either -
+# each package names the calling repo's release.yml as an OIDC trusted publisher.
 #
 # This is the library counterpart to build.yml (which builds + pushes image / chart /
 # docs artifacts for deployable services). Libraries use release-please rather than
@@ -39,14 +39,6 @@ on:
           the job).
         type: string
         default: arc-dind
-    secrets:
-      NPM_TOKEN:
-        required: false
-        description: >-
-          An npm granular access token with read+write on the published scope. Required
-          to publish any npm package; a repo whose released packages are all Python
-          leaves it unset. The publish step fails with a named message rather than a
-          registry 401 when a package.json is released without it.
 
 permissions:
   contents: write        # tags + GitHub releases (release-please)
@@ -109,27 +101,23 @@ jobs:
         with:
           node-version: ${{ inputs.node-version }}
           registry-url: 'https://registry.npmjs.org'
-      # Trusted publishing (OIDC) needs npm >= 11.5.1. Node 24 ships npm 11.x, but the
-      # exact patch tracks whichever Node release setup-node resolves, so raise the floor
-      # explicitly rather than inheriting it. Safe before any trusted publisher exists:
-      # npm uses an OIDC credential only when the package has one configured, and falls
-      # back to NODE_AUTH_TOKEN when it does not.
+      # Trusted publishing (OIDC) needs npm >= 11.5.1, and Node 24's bundled npm tracks
+      # whichever Node release setup-node resolves, so raise the floor explicitly.
       - name: Raise npm to a version that supports trusted publishing
         run: npm install -g npm@latest
-      # --provenance signs the tarball with a sigstore attestation minted from this run's
-      # GitHub OIDC token, so npm shows where the package was built from. It needs the
-      # id-token: write granted above, which every caller must also grant (a called
-      # workflow may request only a SUBSET of its caller's permissions).
+      # No NODE_AUTH_TOKEN, deliberately: each package names this repo's release.yml as a
+      # trusted publisher, so npm mints a short-lived credential from the run's OIDC token
+      # (id-token: write above). There is no standing secret to steal, leak, or rotate -
+      # which is also where npm is forcing everyone by January 2027, when tokens lose
+      # direct publish. A package with no trusted publisher configured fails here with an
+      # auth error; configure the publisher rather than reintroducing a token.
+      #
+      # --provenance signs the tarball with a sigstore attestation from the same OIDC
+      # token, so npm records the commit and workflow the tarball was built from.
       - name: Publish ${{ matrix.path }} to npm (Python packages have no package.json and are skipped — the tag is their release)
         working-directory: ${{ matrix.path }}
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           if [ -f package.json ]; then
-            if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
-              echo "::error::${{ matrix.path }} is an npm package but no NPM_TOKEN is available to this run. Set it as an org or repo secret; the caller passes it through with 'secrets: inherit'."
-              exit 1
-            fi
             echo "Publishing ${{ matrix.path }}"
             npm ci
             npm publish --provenance
