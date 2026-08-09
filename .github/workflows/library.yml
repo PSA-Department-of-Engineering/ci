@@ -5,8 +5,14 @@
 # .release-please-manifest.json, maintains a per-package "release PR" from
 # Conventional Commits, and on merge cuts the tag (<pkg>-vX.Y.Z), the GitHub release,
 # and the per-package CHANGELOG. Any released package that carries a package.json is
-# then published to GitHub Packages; Python packages have no upload step (consumers
-# pip-install the git tag, per csd-library ADR-0001).
+# then published to the public npm registry; Python packages have no upload step
+# (consumers pip-install the git tag, per csd-library ADR-0001).
+#
+# npm publishes go to registry.npmjs.org, not GitHub Packages: GitHub Packages requires
+# an auth token to READ even a public package, so a consumer repo cannot be forked and
+# built by anyone outside the org. Public npm needs no read credential at all, which is
+# what makes a consumer repo forkable. Publishing therefore needs a real npm credential
+# (NPM_TOKEN) where the GITHUB_TOKEN used to suffice.
 #
 # This is the library counterpart to build.yml (which builds + pushes image / chart /
 # docs artifacts for deployable services). Libraries use release-please rather than
@@ -22,19 +28,23 @@ on:
         description: Node version used to build and publish npm packages.
         type: string
         default: '22'
-      npm-scope:
-        description: npm scope mapped to GitHub Packages (the owning org login, lowercased, with leading @).
-        type: string
-        default: '@psa-department-of-engineering'
       runner:
         description: Runner to execute on. Defaults to the in-cluster ARC scale set (homelab-platform ADR-037 - all CI on ARC runners, never GitHub-hosted); pass a GitHub-hosted runner (e.g. ubuntu-latest) only to deliberately keep a caller off homelab uptime.
         type: string
         default: arc-dind
+    secrets:
+      NPM_TOKEN:
+        required: false
+        description: >-
+          An npm granular access token with read+write on the published scope. Required
+          to publish any npm package; a repo whose released packages are all Python
+          leaves it unset. The publish step fails with a named message rather than a
+          registry 401 when a package.json is released without it.
 
 permissions:
   contents: write        # tags + GitHub releases (release-please)
   pull-requests: write   # the release PR (release-please)
-  packages: write        # npm publish to GitHub Packages
+  id-token: write        # npm provenance (sigstore attestation via GitHub OIDC)
 
 jobs:
   # The org's two commit invariants (Conventional-Commits subject + no co-author
@@ -85,17 +95,24 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ inputs.node-version }}
-          registry-url: 'https://npm.pkg.github.com'
-          scope: ${{ inputs.npm-scope }}
-      - name: Publish ${{ matrix.path }} to GitHub Packages (Python packages have no package.json and are skipped — the tag is their release)
+          registry-url: 'https://registry.npmjs.org'
+      # --provenance signs the tarball with a sigstore attestation minted from this run's
+      # GitHub OIDC token, so npm shows where the package was built from. It needs the
+      # id-token: write granted above, which every caller must also grant (a called
+      # workflow may request only a SUBSET of its caller's permissions).
+      - name: Publish ${{ matrix.path }} to npm (Python packages have no package.json and are skipped — the tag is their release)
         working-directory: ${{ matrix.path }}
         env:
-          NODE_AUTH_TOKEN: ${{ github.token }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           if [ -f package.json ]; then
+            if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
+              echo "::error::${{ matrix.path }} is an npm package but no NPM_TOKEN is available to this run. Set it as an org or repo secret; the caller passes it through with 'secrets: inherit'."
+              exit 1
+            fi
             echo "Publishing ${{ matrix.path }}"
             npm ci
-            npm publish
+            npm publish --provenance
           else
             echo "${{ matrix.path }} has no package.json (Python package); the git tag is the release, nothing to publish."
           fi
