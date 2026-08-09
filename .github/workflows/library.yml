@@ -27,9 +27,16 @@ on:
       node-version:
         description: Node version used to build and publish npm packages.
         type: string
-        default: '22'
+        default: '24'
       runner:
-        description: Runner to execute on. Defaults to the in-cluster ARC scale set (homelab-platform ADR-037 - all CI on ARC runners, never GitHub-hosted); pass a GitHub-hosted runner (e.g. ubuntu-latest) only to deliberately keep a caller off homelab uptime.
+        description: >-
+          Runner to execute on. Defaults to the in-cluster ARC scale set
+          (homelab-platform ADR-037 - all CI on ARC runners, never GitHub-hosted). Every
+          job below reads it through `github.event.repository.fork && 'ubuntu-latest' ||
+          inputs.runner`: a FORK has no access to this org's self-hosted scale set, so on
+          a fork every job would wait for a runner forever. ADR-037 governs OUR runs; a
+          fork's runs are not ours. publish-npm is pinned GitHub-hosted regardless (see
+          the job).
         type: string
         default: arc-dind
     secrets:
@@ -52,7 +59,7 @@ jobs:
   # version from the commit type, so a malformed subject silently ships nothing. release
   # needs it, so a bad commit never cuts a release PR.
   commit-hygiene:
-    runs-on: ${{ inputs.runner }}
+    runs-on: ${{ github.event.repository.fork && 'ubuntu-latest' || inputs.runner }}
     permissions:
       contents: read
     steps:
@@ -61,7 +68,7 @@ jobs:
   # The org's secrets gate: fail the run when a pushed commit introduces a credential.
   # release needs it, so a leaked secret never cuts a release PR or publishes a package.
   secrets-scan:
-    runs-on: ${{ inputs.runner }}
+    runs-on: ${{ github.event.repository.fork && 'ubuntu-latest' || inputs.runner }}
     permissions:
       contents: read
     steps:
@@ -69,7 +76,7 @@ jobs:
 
   release:
     needs: [commit-hygiene, secrets-scan]
-    runs-on: ${{ inputs.runner }}
+    runs-on: ${{ github.event.repository.fork && 'ubuntu-latest' || inputs.runner }}
     outputs:
       paths_released: ${{ steps.release.outputs.paths_released }}
     steps:
@@ -102,6 +109,13 @@ jobs:
         with:
           node-version: ${{ inputs.node-version }}
           registry-url: 'https://registry.npmjs.org'
+      # Trusted publishing (OIDC) needs npm >= 11.5.1. Node 24 ships npm 11.x, but the
+      # exact patch tracks whichever Node release setup-node resolves, so raise the floor
+      # explicitly rather than inheriting it. Safe before any trusted publisher exists:
+      # npm uses an OIDC credential only when the package has one configured, and falls
+      # back to NODE_AUTH_TOKEN when it does not.
+      - name: Raise npm to a version that supports trusted publishing
+        run: npm install -g npm@latest
       # --provenance signs the tarball with a sigstore attestation minted from this run's
       # GitHub OIDC token, so npm shows where the package was built from. It needs the
       # id-token: write granted above, which every caller must also grant (a called

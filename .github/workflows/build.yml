@@ -38,7 +38,16 @@ on:
   workflow_call:
     inputs:
       runner:
-        description: ARC runner scale set to run on.
+        description: >-
+          ARC runner scale set to run on. Every job below reads this through
+          `github.event.repository.fork && 'ubuntu-latest' || inputs.runner`: a FORK of
+          an app repo has no access to this org's self-hosted scale set, so on a fork
+          every job would sit in "waiting for a runner" forever and the repo would be
+          readable but not buildable. Falling a fork back to a GitHub-hosted runner is
+          what makes an open-sourced app repo actually forkable (homelab-platform
+          ADR-037 governs OUR runs, which still go to ARC - a fork's runs are not ours).
+          A fork PR opened against the canonical repo runs in the canonical repo's
+          context, so it stays on ARC; only the forker's own pushes go GitHub-hosted.
         type: string
         default: arc-dind
       app-name:
@@ -120,7 +129,7 @@ jobs:
   # which skips every step below. The job still runs and succeeds (no executed
   # step fails), so its release proceeds.
   conformance:
-    runs-on: ${{ inputs.runner }}
+    runs-on: ${{ github.event.repository.fork && 'ubuntu-latest' || inputs.runner }}
     permissions:
       contents: read
     steps:
@@ -183,7 +192,7 @@ jobs:
   # conformance this applies to EVERY repo, including the docs-only portal, so it is
   # independent of app-contract. release needs it, so a bad commit is never released.
   commit-hygiene:
-    runs-on: ${{ inputs.runner }}
+    runs-on: ${{ github.event.repository.fork && 'ubuntu-latest' || inputs.runner }}
     permissions:
       contents: read
     steps:
@@ -193,7 +202,7 @@ jobs:
   # Like commit-hygiene this applies to EVERY repo, including the docs-only portal, so it
   # is independent of app-contract. release needs it, so a leaked secret is never released.
   secrets-scan:
-    runs-on: ${{ inputs.runner }}
+    runs-on: ${{ github.event.repository.fork && 'ubuntu-latest' || inputs.runner }}
     permissions:
       contents: read
     steps:
@@ -212,7 +221,7 @@ jobs:
   release:
     if: github.event_name != 'pull_request'
     needs: [conformance, commit-hygiene, secrets-scan]
-    runs-on: ${{ inputs.runner }}
+    runs-on: ${{ github.event.repository.fork && 'ubuntu-latest' || inputs.runner }}
     env:
       # ghcr.io/<owner>; lowercased at point of use (owner may carry uppercase).
       REG: ghcr.io/${{ github.repository_owner }}
