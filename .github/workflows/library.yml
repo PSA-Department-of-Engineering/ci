@@ -85,7 +85,13 @@ jobs:
   publish-npm:
     needs: release
     if: needs.release.outputs.paths_released != '' && needs.release.outputs.paths_released != '[]'
-    runs-on: ${{ inputs.runner }}
+    # NOT inputs.runner, and the one deliberate exception to homelab ADR-037's
+    # all-CI-on-ARC rule: npm refuses a provenance attestation minted on a self-hosted
+    # runner ("Only github-hosted runners are supported when publishing with
+    # provenance"), so on arc-dind every publish dies at the registry with a 422.
+    # Publishing a public artifact to a public registry has no business riding on
+    # homelab uptime either - this is the one job whose audience is outside the lab.
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
