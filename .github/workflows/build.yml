@@ -306,15 +306,21 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Every registry push goes through this helper so the one possible
-          # fault reads as its remedy, not as a raw registry error.
-          push_image() {
-            docker push "$1" && return 0
+          # Every registry push reports the one possible fault as its remedy,
+          # not as a raw registry error. Images and the chart share the text
+          # because they share the credential and the grant rule.
+          grant_refused() {
             echo "==> GHCR refused the push. The workflow token is the only credential,"
             echo "    and it writes only packages whose settings grant THIS repo the"
             echo "    Write role (package -> Package settings -> Manage Actions access)."
+            echo "    Changing a repo's visibility drops these grants, so re-check every"
+            echo "    package the repo publishes after flipping it public or private."
             echo "    Fix the grant, then push a release-cutting commit - re-running"
             echo "    this job republishes nothing once the tag exists."
+          }
+          push_image() {
+            docker push "$1" && return 0
+            grant_refused
             return 1
           }
           # cycjimmy/semantic-release-action unconditionally deletes the workspace
@@ -398,5 +404,5 @@ jobs:
           # docker credential store, same token, same grant rule). ---
           if [ -d k8s ]; then
             helm package k8s --version "$VERSION" --app-version "$VERSION" -d /tmp
-            helm push /tmp/*.tgz "oci://$REG/charts"
+            helm push /tmp/*.tgz "oci://$REG/charts" || { grant_refused; exit 1; }
           fi
