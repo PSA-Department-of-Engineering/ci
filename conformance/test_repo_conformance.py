@@ -451,17 +451,18 @@ def test_auth_existing_secret_has_example(repo_root: Path, deploy_repo: str) -> 
 
 @intent("INT-HOMELAB-039")
 def test_app_never_provides_packages_token(repo_root: Path, deploy_repo: str) -> None:
-    """INT-HOMELAB-039: no app workflow provides the GitHub Packages token itself.
+    """INT-HOMELAB-039: no app workflow provides an npm registry token itself.
 
     The token counterpart of the build thin-caller rule (INT-HOMELAB-013). The
-    @psa-department-of-engineering credential lives in exactly one place - the shared
-    setup-node-auth composite. An app's node jobs call the composite and, at most, pass
-    secrets.PACKAGES_READ_TOKEN in; they never assign NODE_AUTH_TOKEN themselves. Asserting
-    the single invariant - the app does not set the token variable at all - rather than
+    @psa-department-of-engineering packages are on the public npm registry (csd-library
+    ADR-0003), so installing them is anonymous and there is no credential to wire at all.
+    Asserting the single invariant - the app does not set the token variable - rather than
     banning particular spellings catches every hand-wiring (a bare secrets.NODE_AUTH_TOKEN,
     a re-typed PACKAGES_READ_TOKEN || github.token fallback, or any future variant), the
-    way a delivery once hand-wrote a NODE_AUTH_TOKEN nothing created and failed closed
-    (REF-Homelab section 4).
+    way a delivery once hand-wrote a NODE_AUTH_TOKEN nothing created and failed closed.
+    Since the move off GitHub Packages it catches one more thing: the stale auth wiring a
+    repo carried from that era, which now fails against a registry that never asked for it
+    (REF-Foundry section 4).
     """
     repo = _repo_dir(repo_root, deploy_repo)
     workflows = repo / ".github" / "workflows"

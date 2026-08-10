@@ -232,10 +232,10 @@ INT-HOMELAB-037:
   criticality: high
 
 INT-HOMELAB-039:
-  version: 1.0.0
+  version: 1.1.0
   status: active
-  statement: "No app workflow MAY provide the GitHub Packages token itself (assign NODE_AUTH_TOKEN). The @psa-department-of-engineering credential lives once, in the shared setup-node-auth composite; an app's node jobs call the composite and at most pass secrets.PACKAGES_READ_TOKEN in as an input, but never set the token variable itself."
-  rationale: "The token counterpart of the build thin-caller rule (INT-HOMELAB-013). A delivery's build phase once hand-wrote a bespoke ci.yml that set a NODE_AUTH_TOKEN secret which did not exist; CI failed closed and the phase degraded. Asserting the single invariant - the app never sets the token variable - rather than banning particular spellings closes the gap robustly and kills the per-repo duplication (ADR-019, REF-Homelab section 4)."
+  statement: "No app workflow MAY provide an npm registry token itself (assign NODE_AUTH_TOKEN). The @psa-department-of-engineering packages are published to the public npm registry, so installing them needs no credential at all; an app that sets the variable is wiring a credential nothing asks for."
+  rationale: "The token counterpart of the build thin-caller rule (INT-HOMELAB-013). A delivery's build phase once hand-wrote a bespoke ci.yml that set a NODE_AUTH_TOKEN secret which did not exist; CI failed closed and the phase degraded. The invariant outlived its original reason: the packages moved to public npm (csd-library ADR-0003), so there is no longer a credential to centralize - reading them is anonymous. Asserting that the app never sets the token variable, rather than banning particular spellings, closes the gap robustly and now also catches the stale wiring left over from the GitHub Packages era (ADR-019, REF-Foundry section 4)."
   test:
     scope: integration
     component: RepoStandard
