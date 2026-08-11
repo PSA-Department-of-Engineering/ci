@@ -498,7 +498,11 @@ def test_app_never_provides_packages_token(repo_root: Path, deploy_repo: str) ->
     offenders = [
         wf.name
         for wf in sorted((*workflows.glob("*.yml"), *workflows.glob("*.yaml")))
-        if re.search(r"NODE_AUTH_TOKEN\s*[:=]", wf.read_text(encoding="utf-8"))
+        # Comment-stripped, per the rule this file already learned twice
+        # (_sans_comments): a heuristic must read code, never commentary. A workflow
+        # documenting that it assigns no NODE_AUTH_TOKEN names the variable followed
+        # by a colon, which is indistinguishable from an assignment to the regex.
+        if re.search(r"NODE_AUTH_TOKEN\s*[:=]", _sans_comments(wf.read_text(encoding="utf-8")))
     ]
     assert not offenders, (
         f"{deploy_repo}: workflow(s) assign an npm registry token themselves "
