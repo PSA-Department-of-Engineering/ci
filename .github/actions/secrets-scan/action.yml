@@ -2,7 +2,7 @@
 # introduces a credential must never reach a tag or a published artifact, so this
 # scans the exact commits a push added and fails the run loudly when it finds one.
 # Both workflows call this composite (like they call check-commit-hygiene and
-# setup-node-auth), so the gate lives once and cannot drift across the shared path.
+# check-commit-hygiene), so the gate lives once and cannot drift across the shared path.
 #
 # gitleaks is the standard tool; it is run as a pinned release binary rather than via
 # gitleaks/gitleaks-action, deliberately: the action's v2 requires a paid GITLEAKS_LICENSE

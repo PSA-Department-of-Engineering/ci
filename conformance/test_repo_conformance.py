@@ -474,10 +474,10 @@ def test_app_never_provides_packages_token(repo_root: Path, deploy_repo: str) ->
         if re.search(r"NODE_AUTH_TOKEN\s*[:=]", wf.read_text(encoding="utf-8"))
     ]
     assert not offenders, (
-        f"{deploy_repo}: workflow(s) provide the GitHub Packages token themselves "
-        f"(assign NODE_AUTH_TOKEN): {offenders}. The token lives once in the shared "
-        "setup-node-auth composite; call it instead of setting NODE_AUTH_TOKEN "
-        "(REF-Homelab section 4)."
+        f"{deploy_repo}: workflow(s) assign an npm registry token themselves "
+        f"(NODE_AUTH_TOKEN): {offenders}. The @psa-department-of-engineering packages "
+        "are on the public npm registry, so there is no credential to assign - delete "
+        "the assignment rather than wiring a secret to it (REF-Foundry section 4)."
     )
 
 

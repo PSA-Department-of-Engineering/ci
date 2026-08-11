@@ -101,12 +101,13 @@ on:
       PACKAGES_READ_TOKEN:
         required: false
         description: >-
-          A GitHub PAT used for two GitHub Packages operations the per-repo
-          GITHUB_TOKEN may not cover: (1) installing @psa-department-of-engineering/*
-          npm packages (e.g. vitest-intent) during the docs image build, and (2)
-          pushing images to an org GHCR namespace (needs write:packages) when the
-          org caps the Actions token to read. Both fall back to GITHUB_TOKEN when
-          unset (fine for a same-org npm read and a personal-namespace push).
+          A GitHub PAT for pushing images to an org GHCR namespace (needs
+          write:packages) when the org caps the Actions token to read. Falls back to
+          GITHUB_TOKEN when unset, which suffices for a personal-namespace push. This
+          is an IMAGE-registry credential only: it once also covered installing
+          @psa-department-of-engineering/* npm packages during the docs build, but
+          those are on the public npm registry now (csd-library ADR-0003) and need no
+          credential at all.
 
 # No top-level permissions block, deliberately: a called workflow may request
 # only a SUBSET of what its caller grants, so declaring permissions here makes
@@ -296,13 +297,6 @@ jobs:
         env:
           VERSION: ${{ steps.release.outputs.new_release_version }}
           DOCS_BASE: ${{ inputs.docs-base }}
-          # Docs sites pull @psa-department-of-engineering/* (e.g. vitest-intent) from
-          # GitHub Packages, which needs auth even for public packages. Pass a token to
-          # the docs build as a BuildKit secret (below). A same-org repo's GITHUB_TOKEN
-          # reads the org's packages; a repo OUTSIDE that org cannot (the token's app
-          # installation doesn't exist there), so it supplies a read:packages PAT as
-          # PACKAGES_READ_TOKEN, which wins when set.
-          NODE_AUTH_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN || github.token }}
         run: |
           set -euo pipefail
 
@@ -359,10 +353,10 @@ jobs:
               .map(([k, v]) => '--build-arg ' + q(k + '=' + (v == null ? '' : v)));
             const tag = reg + '/' + base + ':' + version;
             lines.push('echo "==> building ' + base + '"');
-            // NODE_AUTH_TOKEN rides in as a BuildKit secret, exactly like the docs
-            // build below: app Dockerfiles whose SPA stage consumes
-            // @psa-department-of-engineering/* packages mount it; the rest ignore it.
-            lines.push(['DOCKER_BUILDKIT=1 docker build', '--secret id=node_auth_token,env=NODE_AUTH_TOKEN', q(ctx), '-f', q(dockerfile), ...args, '-t', q(tag)].join(' '));
+            // No build secret: @psa-department-of-engineering/* resolves from the
+            // public npm registry (csd-library ADR-0003), so an SPA stage installs
+            // it anonymously.
+            lines.push(['DOCKER_BUILDKIT=1 docker build', q(ctx), '-f', q(dockerfile), ...args, '-t', q(tag)].join(' '));
             lines.push('push_image ' + q(tag));
             n++;
           }
@@ -375,7 +369,6 @@ jobs:
             . /tmp/build-images.sh
           elif [ -f devops/Dockerfile ]; then
             DOCKER_BUILDKIT=1 docker build -f devops/Dockerfile \
-              --secret id=node_auth_token,env=NODE_AUTH_TOKEN \
               -t "$REG/$APP:$VERSION" .
             push_image "$REG/$APP:$VERSION"
           fi
@@ -389,11 +382,10 @@ jobs:
             # this registry; app repos have none and skip it.
             if [ -f deploy-repos.yaml ]; then cp deploy-repos.yaml docs/deploy-repos.yaml; fi
             BASE="${DOCS_BASE:-/apps/$APP}"
-            # NODE_AUTH_TOKEN (the workflow token) is passed as a BuildKit secret so
-            # docs/Dockerfile's `npm ci` can auth to GitHub Packages without baking the
-            # token into a layer. Dockerfiles that don't mount it just ignore it.
+            # No build secret: docs/Dockerfile's `npm ci` pulls
+            # @psa-department-of-engineering/* from the public npm registry
+            # (csd-library ADR-0003), which needs no credential.
             DOCKER_BUILDKIT=1 docker build -f docs/Dockerfile \
-              --secret id=node_auth_token,env=NODE_AUTH_TOKEN \
               --build-arg DOCS_BASE="$BASE" -t "$REG/$APP-docs:$VERSION" docs/
             push_image "$REG/$APP-docs:$VERSION"
             docker tag "$REG/$APP-docs:$VERSION" "$REG/$APP-docs:latest"

@@ -4,7 +4,7 @@
 # silently ships nothing; catching it here makes the failure loud instead. And no commit
 # may carry a co-author / AI-attribution trailer: a standing repo rule, mechanically
 # enforced rather than left to prose. Both workflows call this composite (like they call
-# setup-node-auth), so the check lives once and cannot drift across the shared path.
+# secrets-scan), so the check lives once and cannot drift across the shared path.
 #
 # Runs over the commits a push introduced (github.event.before..github.sha), skipping
 # merge commits, which are auto-generated and neither release engine reads.
