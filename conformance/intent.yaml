@@ -333,3 +333,18 @@ INT-HOMELAB-062:
     component: RepoStandard
     type: invariant
   criticality: high
+
+# --- the app-owned PR gate (INT-HOMELAB-063): build.yml is shared so release
+# --- cannot drift; test.yml is per-app, but its EXISTENCE is contract, because a
+# --- repo without one meets a contributor's PR with no check at all ---
+
+INT-HOMELAB-063:
+  version: 1.0.0
+  status: active
+  statement: "An app repo MUST carry .github/workflows/test.yml, and it MUST run on pull_request. The suite inside is the app's own (pytest, vitest, Playwright); the file's existence and its PR trigger are the contract."
+  rationale: "build.yml is a thin caller so release and publish cannot drift, but a test suite is genuinely per-app and has nothing to share - which is exactly why nothing ensured one existed. REF-Foundry section 4 asserted the scaffold dropped a test.yml; it did not, and no check noticed, so six app repos ran no CI on a pull request at all. That is only visible once a repo is public: an outside contributor's PR would be merged with nothing having run against it. The scaffold now ships the file (with the intent audit, the one gate every app repo has by contract) and this claim keeps it there."
+  test:
+    scope: integration
+    component: RepoStandard
+    type: invariant
+  criticality: high

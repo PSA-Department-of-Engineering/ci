@@ -270,6 +270,33 @@ def test_has_ci_caller(repo_root: Path, deploy_repo: str) -> None:
     )
 
 
+@intent("INT-HOMELAB-063")
+def test_has_app_owned_test_workflow(repo_root: Path, deploy_repo: str) -> None:
+    """INT-HOMELAB-063: <repo>/.github/workflows/test.yml exists and runs on pull_request.
+
+    build.yml is a thin caller so release and publish cannot drift; a test suite is
+    genuinely per-app and has nothing to share, which is exactly why nothing ensured
+    one existed. The file's existence and its PR trigger are the contract: without
+    them a contributor's PR - a fork's especially - is merged with nothing having run
+    against it, which only becomes visible once the repo is public.
+    """
+    repo = _repo_dir(repo_root, deploy_repo)
+    wf = repo / ".github" / "workflows" / "test.yml"
+    assert wf.is_file(), (
+        f"{deploy_repo}: missing .github/workflows/test.yml. The suite inside is the "
+        "app's own, but the file is contract: without it a pull request meets no gate "
+        "(REF-Foundry section 4)."
+    )
+    doc = yaml.safe_load(wf.read_text(encoding="utf-8")) or {}
+    # PyYAML parses the bare key `on:` as the boolean True.
+    on = doc.get("on", doc.get(True))
+    keys = set(on) if isinstance(on, (dict, list)) else {on}
+    assert "pull_request" in keys, (
+        f"{deploy_repo}: .github/workflows/test.yml does not run on pull_request, so a "
+        "contributor's PR meets no gate before merge (REF-Foundry section 4)."
+    )
+
+
 @intent("INT-HOMELAB-020")
 def test_has_deploy_branch(repo_root: Path, deploy_repo: str) -> None:
     """INT-HOMELAB-020: origin carries at least one deploy-<install> branch with
