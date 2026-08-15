@@ -114,7 +114,7 @@ jobs:
       #
       # --provenance signs the tarball with a sigstore attestation from the same OIDC
       # token, so npm records the commit and workflow the tarball was built from.
-      - name: Publish ${{ matrix.path }} to npm (Python packages have no package.json and are skipped — the tag is their release)
+      - name: Publish ${{ matrix.path }} to npm (Python packages have no package.json and are skipped: the tag is their release)
         working-directory: ${{ matrix.path }}
         run: |
           if [ -f package.json ]; then

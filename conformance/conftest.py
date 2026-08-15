@@ -1,4 +1,4 @@
-"""Fixtures for the per-app conformance suite (REF-Homelab section 4).
+"""Fixtures for the per-app conformance suite (REF-Foundry section 4).
 
 This suite is the single home of the chart-side app-contract claims and runs in
 each app's own CI, where the app is checked out: the shared build workflow

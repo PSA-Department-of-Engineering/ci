@@ -1,6 +1,6 @@
 # This repo's own gate (issue #6).
 #
-# Both other workflows here are `on: workflow_call` — they are reusable, invoked
+# Both other workflows here are `on: workflow_call`: they are reusable, invoked
 # by the repos they serve, and nothing in them runs against this repo. So until
 # this file existed, conformance/intent.yaml was audited nowhere: build.yml runs
 # `csd-intent .` against the APP's checkout, deliberately before .ci-suite/ lands
@@ -14,7 +14,7 @@
 #
 # The suite cannot EXECUTE here: it judges one app checkout, named by
 # CONFORMANCE_APP_DIR / CONFORMANCE_APP_NAME, and this repo is not an app. So the
-# gate is the two things that can be checked without one — the audit, and a
+# gate is the two things that can be checked without one: the audit, and a
 # collection smoke test that exercises every import.
 #
 # Pins mirror build.yml's exactly, so the gate cannot drift from what it gates.
@@ -52,7 +52,7 @@ jobs:
             - name: Audit conformance/intent.yaml (csd-intent)
               run: csd-intent conformance --tests-dir conformance
 
-            # Import and collection smoke. The env vars are placeholders — nothing
+            # Import and collection smoke. The env vars are placeholders, nothing
             # here judges this repo as an app; pointing them at the checkout is
             # only what lets conftest's fixtures resolve so collection can run.
             # A suite that fails to import fails here instead of in every app.

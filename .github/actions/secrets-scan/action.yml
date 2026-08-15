@@ -7,10 +7,10 @@
 # gitleaks is the standard tool; it is run as a pinned release binary rather than via
 # gitleaks/gitleaks-action, deliberately: the action's v2 requires a paid GITLEAKS_LICENSE
 # for organization repos (which every caller here is), and a version-pinned binary keeps
-# the gate reproducible — it moves only when this composite's default does.
+# the gate reproducible: it moves only when this composite's default does.
 #
 # Runs over the commits a push introduced (github.event.before..github.sha), skipping
-# merge commits, which are auto-generated and add no authored content — the same range
+# merge commits, which are auto-generated and add no authored content, the same range
 # check-commit-hygiene judges, so both gates see exactly the same push.
 name: Secrets scan (gitleaks)
 description: Fail the run if any newly-pushed commit introduces a secret; a repo-level .gitleaks.toml allowlists false positives.
@@ -40,7 +40,7 @@ runs:
         set -uo pipefail
         zero="0000000000000000000000000000000000000000"
 
-        # Resolve the commits this event introduced — the same range logic as
+        # Resolve the commits this event introduced, the same range logic as
         # check-commit-hygiene, so both gates judge exactly the same push. A pull_request
         # (should a caller wire one) diffs against its base; a push diffs before..sha; a
         # first push or a force-past-unreachable-before falls back to the single new tip.
@@ -59,7 +59,7 @@ runs:
           exit 0
         fi
 
-        # Fetch the pinned gitleaks binary (Linux x64 — both the ARC dind and the
+        # Fetch the pinned gitleaks binary (Linux x64: both the ARC dind and the
         # GitHub-hosted runners the shared workflows use are linux/amd64).
         tmp="$(mktemp -d)"
         url="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"

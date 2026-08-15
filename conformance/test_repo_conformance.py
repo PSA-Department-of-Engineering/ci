@@ -1,4 +1,4 @@
-"""Per-app conformance: the REF-Homelab section 4 app-repo contract (ADR-018).
+"""Per-app conformance: the REF-Foundry section 4 app-repo contract (ADR-018).
 
 The single home of the chart-side app-contract claims (002..010, 013, 018..020,
 022..023, 029..030, 034, 037, 039, 045..048, 056..057, 060), run by the shared
@@ -245,7 +245,7 @@ def test_has_commit_message_hook_config(repo_root: Path, deploy_repo: str) -> No
     config = repo / ".pre-commit-config.yaml"
     assert config.is_file(), (
         f"{deploy_repo}: missing .pre-commit-config.yaml (the committed Conventional-Commit "
-        "commit-msg hook config; ADR-024, REF-Homelab section 4)"
+        "commit-msg hook config; ADR-024, REF-Foundry section 4)"
     )
     text = config.read_text(encoding="utf-8").lower()
     assert "commit-msg" in text, (
@@ -367,7 +367,7 @@ def test_docs_ships_starlight_bundle(repo_root: Path, deploy_repo: str) -> None:
     docs_intent = repo / "docs" / "intent.yaml"
     assert docs_intent.is_file(), (
         f"{deploy_repo}: missing docs/intent.yaml (the STARLIGHT intent bundle; "
-        "bootstrap-starlight ships it by default — do not scaffold with --no-intent)"
+        "bootstrap-starlight ships it by default, do not scaffold with --no-intent)"
     )
     assert "INT-STARLIGHT-" in docs_intent.read_text(encoding="utf-8"), (
         f"{deploy_repo}: docs/intent.yaml declares no INT-STARLIGHT- claim "
@@ -384,7 +384,7 @@ def test_configmap_consumers_carry_checksum_annotation(repo_root: Path, deploy_r
     restarts pods on a ConfigMap change, so without a checksum/config pod-template
     annotation a config-only change syncs as a silent no-op: ArgoCD applies the new
     ConfigMap while the running pods keep the old values until the next image roll
-    (REF-Homelab section 4). Helm templates are not parseable YAML, so the check is
+    (REF-Foundry section 4). Helm templates are not parseable YAML, so the check is
     textual per template document: any 'kind: Deployment' doc naming a configMapRef
     under envFrom must also carry checksum/config. Deployments with no envFrom
     ConfigMap reference (the static docs servers) hold vacuously.
@@ -407,7 +407,7 @@ def test_configmap_consumers_carry_checksum_annotation(repo_root: Path, deploy_r
     assert not offenders, (
         f"{deploy_repo}: Deployment(s) consume a ConfigMap via envFrom without a "
         f"checksum/config pod-template annotation, so a config-only change never rolls "
-        f"the pods that read it: {offenders} (REF-Homelab section 4)"
+        f"the pods that read it: {offenders} (REF-Foundry section 4)"
     )
 
 
@@ -421,14 +421,14 @@ def test_workloads_honor_paused(repo_root: Path, deploy_repo: str) -> None:
     to bite, the app chart must declare a top-level `paused` value (default
     false) and every non-docs workload must render its replica count from it.
     The docs Deployment is excepted: documentation stays served while an app is
-    paused, so it holds vacuously (REF-Homelab section 4).
+    paused, so it holds vacuously (REF-Foundry section 4).
     """
     repo = _repo_dir(repo_root, deploy_repo)
     values = repo / "k8s" / "values.yaml"
     assert values.is_file(), f"{deploy_repo}: missing k8s/values.yaml (INT-FOUNDRY-005)"
     loaded = yaml.safe_load(values.read_text(encoding="utf-8")) or {}
     assert "paused" in loaded, (
-        f"{deploy_repo}: k8s/values.yaml declares no top-level `paused` default (REF-Homelab section 4)"
+        f"{deploy_repo}: k8s/values.yaml declares no top-level `paused` default (REF-Foundry section 4)"
     )
     templates = repo / "k8s" / "templates"
     assert templates.is_dir(), f"{deploy_repo}: missing k8s/templates/ (INT-FOUNDRY-005)"
@@ -446,7 +446,7 @@ def test_workloads_honor_paused(repo_root: Path, deploy_repo: str) -> None:
                 offenders.append(tpl.relative_to(repo).as_posix())
     assert not offenders, (
         f"{deploy_repo}: non-docs Deployment(s) do not render replicas from .Values.paused, "
-        f"so the platform cannot scale the app to zero: {offenders} (REF-Homelab section 4)"
+        f"so the platform cannot scale the app to zero: {offenders} (REF-Foundry section 4)"
     )
 
 

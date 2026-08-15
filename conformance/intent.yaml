@@ -1,4 +1,4 @@
-# The chart-side per-app claims of the REF-Homelab section 4 app contract
+# The chart-side per-app claims of the REF-Foundry section 4 app contract
 # (CSD-INTENT-01 schema), attested by conformance/test_repo_conformance.py
 # and run by the shared build workflow in each app's own CI. The
 # install-side claims stay in the platform repo beside its own suite.
@@ -127,13 +127,13 @@ INT-FOUNDRY-018:
   criticality: high
 
 # --- conventional-commit hook conformance (ADR-024); a RepoStandard claim that the
-# --- app-repo contract (REF-Homelab section 4) now includes, numbered after docs base ---
+# --- app-repo contract (REF-Foundry section 4) now includes, numbered after docs base ---
 
 INT-FOUNDRY-019:
   version: 1.0.0
   status: active
   statement: "Every deploy repo MUST commit a .pre-commit-config.yaml carrying a Conventional-Commit check at the commit-msg stage, so the commit convention the version scheme reads (ADR-024) is guarded locally from a fresh clone rather than left to discipline."
-  rationale: "Image and chart versions are computed from Conventional Commits by semantic-release (ADR-024); a malformed message silently yields no release. A committed, bypassable commit-msg hook gives every contributor the same fast local check from a fresh clone, scaffolded once (REF-Homelab section 4) rather than hand-copied per repo. Only the config is committed and testable: the .git/hooks install is per-clone (`pre-commit install`) and not version-controlled, so conformance asserts the config that defines the hook, never its installation."
+  rationale: "Image and chart versions are computed from Conventional Commits by semantic-release (ADR-024); a malformed message silently yields no release. A committed, bypassable commit-msg hook gives every contributor the same fast local check from a fresh clone, scaffolded once (REF-Foundry section 4) rather than hand-copied per repo. Only the config is committed and testable: the .git/hooks install is per-clone (`pre-commit install`) and not version-controlled, so conformance asserts the config that defines the hook, never its installation."
   test:
     scope: integration
     component: RepoStandard
@@ -174,7 +174,7 @@ INT-FOUNDRY-023:
   version: 1.0.0
   status: active
   statement: "A deploy repo whose k8s/values.yaml sets a non-empty auth.existingSecret MUST ship k8s/secrets/<name>.env.example declaring that Secret, so a fail-closed app credential is provisioned out of band (apply-secrets.sh) rather than silently absent."
-  rationale: "A fail-closed app (estimatekit, protopane) refuses every protected route with 503 until its auth Secret exists; that Secret is provisioned out of band (ADR-017) from a git-ignored env file, so the committed k8s/secrets/<name>.env.example is the discoverable contract for which keys to supply. A values.yaml that names auth.existingSecret but ships no matching example leaves the credential silently absent — the instance serves nothing and the gap is invisible until deploy. Tying the template to the reference turns that into a test failure. The claim holds vacuously when auth.existingSecret is unset (an app gated elsewhere, or one keying its Secret differently)."
+  rationale: "A fail-closed app (estimatekit, protopane) refuses every protected route with 503 until its auth Secret exists; that Secret is provisioned out of band (ADR-017) from a git-ignored env file, so the committed k8s/secrets/<name>.env.example is the discoverable contract for which keys to supply. A values.yaml that names auth.existingSecret but ships no matching example leaves the credential silently absent: the instance serves nothing and the gap is invisible until deploy. Tying the template to the reference turns that into a test failure. The claim holds vacuously when auth.existingSecret is unset (an app gated elsewhere, or one keying its Secret differently)."
   test:
     scope: integration
     component: RepoStandard
@@ -192,7 +192,7 @@ INT-FOUNDRY-029:
     type: invariant
   criticality: high
 
-# --- Operational pause conformance (REF-Homelab section 4); a RepoStandard claim that the
+# --- Operational pause conformance (REF-Foundry section 4); a RepoStandard claim that the
 # --- platform can scale an onboarded app to zero without offboarding it (ADR-030) ---
 
 INT-FOUNDRY-030:
@@ -206,7 +206,7 @@ INT-FOUNDRY-030:
     type: invariant
   criticality: high
 
-# --- App-facing SSO conformance (REF-Homelab; ADR-031): the realm-per-app
+# --- App-facing SSO conformance (REF-Foundry; ADR-031): the realm-per-app
 # --- identity contract, the counterpart of the database isolation claims (014..017) ---
 
 INT-FOUNDRY-034:

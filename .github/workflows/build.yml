@@ -69,7 +69,7 @@ on:
         default: ''
       app-contract:
         description: >-
-          Audit the repo against the REF-Homelab section 4 app contract (and run
+          Audit the repo against the REF-Foundry section 4 app contract (and run
           csd-intent on its intent.yaml) before releasing. Onboardable apps leave this
           true; the docs-only platform portal sets it false.
         type: boolean
@@ -118,7 +118,7 @@ on:
 # through unchanged.
 
 jobs:
-  # REF-Homelab section 4: the onboardable-app repo contract. The authoritative
+  # REF-Foundry section 4: the onboardable-app repo contract. The authoritative
   # per-app suite is conformance/ in THIS repo (pytest + intent markers), run
   # here in each app's own CI, where the app is checked out; the platform repo
   # keeps only the install-side suite (its deploy-* branches), which an app
@@ -144,7 +144,7 @@ jobs:
 
       # csd-intent is the audit CLI (PyYAML installs with it); pytest-intent
       # supplies the @intent decorator the suite imports. Git-tag installs from
-      # csd-library — the same pins the platform repo records in its pyproject.toml.
+      # csd-library: the same pins the platform repo records in its pyproject.toml.
       - if: ${{ inputs.app-contract }}
         name: Install csd-intent, pytest, and the intent runtime
         run: |
@@ -171,7 +171,7 @@ jobs:
           path: .ci-suite
 
       - if: ${{ inputs.app-contract }}
-        name: Per-app conformance suite (REF-Homelab section 4)
+        name: Per-app conformance suite (REF-Foundry section 4)
         env:
           CONFORMANCE_APP_DIR: ${{ github.workspace }}
           CONFORMANCE_APP_NAME: ${{ inputs.app-name }}
