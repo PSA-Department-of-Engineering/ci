@@ -3,13 +3,13 @@
 The chart checks are deliberately textual, which makes them fakeable by
 comments in both directions: a comment carrying a trigger substring can
 misclassify a document (the loud failure: wttg3-helper's sites Service failed
-INT-HOMELAB-056 on a comment naming the derived docs backendRef pattern), or
+INT-FOUNDRY-056 on a comment naming the derived docs backendRef pattern), or
 falsely satisfy a content assertion (the silent one: a Deployment passed
-INT-HOMELAB-030 on a comment quoting `.Values.paused` it never rendered).
+INT-FOUNDRY-030 on a comment quoting `.Values.paused` it never rendered).
 These are string-level regression cases against the shared helpers, hermetic
 by design: they read no checkout, so they run identically in this repo's own
 gate and in every app pipeline that executes the suite. Plain pytest, no
-intent markers: the INT-HOMELAB claims are per-app contract claims, and what
+intent markers: the INT-FOUNDRY claims are per-app contract claims, and what
 is attested here is the suite's own reading of a chart, not any app's
 conformance.
 """
@@ -84,6 +84,6 @@ def test_a_comment_never_satisfies_a_content_assertion() -> None:
 
 def test_a_comment_never_exempts_a_workload_from_the_paused_rule() -> None:
     # A comment mentioning "-docs" must not smuggle a workload into the docs
-    # exemption of INT-HOMELAB-030 (the third way this class of defect bites).
+    # exemption of INT-FOUNDRY-030 (the third way this class of defect bites).
     commented = 'kind: Deployment\n# named like the "<chart>-docs" pattern\nspec:\n  replicas: 1\n'
     assert not _is_docs_component(_sans_comments(commented))

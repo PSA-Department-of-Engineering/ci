@@ -10,7 +10,7 @@
 #
 # Before any release, a conformance job runs the per-app conformance suite from
 # this repo's conformance/ directory (the single home of the chart-side
-# INT-HOMELAB claims: devops/, k8s/, docs/ honoring DOCS_BASE, README sections,
+# INT-FOUNDRY claims: devops/, k8s/, docs/ honoring DOCS_BASE, README sections,
 # .env.example, intent.yaml, route and identity bindings) and audits the app's
 # intent.yaml with csd-intent. It runs in the app's own CI, where the app is
 # checked out; the platform repo keeps the install-side suite. release `needs`
@@ -86,7 +86,7 @@ on:
         description: >-
           The platform repository (owner/name) whose deploy-* branches carry the
           install manifests and each app's promotion record. The reconcile check
-          (INT-HOMELAB-061) reads it read-only; the fleet runs one platform repo,
+          (INT-FOUNDRY-061) reads it read-only; the fleet runs one platform repo,
           so the default is right for every app.
         type: string
         default: rafaelgpires/homelab-platform
@@ -95,7 +95,7 @@ on:
         required: false
         description: >-
           A read-only PAT for the platform repository (contents read), arming the
-          reconcile check (INT-HOMELAB-061): the app's released set against the
+          reconcile check (INT-FOUNDRY-061): the app's released set against the
           promotion record the install branches carry for it. Unset, the check
           reports a named skip - the drift brake is off, never silently green.
       PACKAGES_READ_TOKEN:
@@ -155,14 +155,14 @@ jobs:
 
       # Audit the app's own intent.yaml BEFORE the suite checkout below lands in
       # the tree: csd-intent scans the whole checkout for markers, and the
-      # suite's own INT-HOMELAB markers must not enter this app's audit.
+      # suite's own INT-FOUNDRY markers must not enter this app's audit.
       # CSD-INTENT-01 schema + every active claim attested (default --fail-on any).
       - if: ${{ inputs.app-contract }}
         name: Audit intent.yaml (csd-intent)
         run: csd-intent .
 
       # The per-app conformance suite, from this repo (the single home of the
-      # chart-side INT-HOMELAB claims). Checked out inside the app workspace
+      # chart-side INT-FOUNDRY claims). Checked out inside the app workspace
       # only after the intent audit above has already read the tree.
       - if: ${{ inputs.app-contract }}
         uses: actions/checkout@v4
@@ -175,7 +175,7 @@ jobs:
         env:
           CONFORMANCE_APP_DIR: ${{ github.workspace }}
           CONFORMANCE_APP_NAME: ${{ inputs.app-name }}
-          # The reconcile check (INT-HOMELAB-061): the one deliberate
+          # The reconcile check (INT-FOUNDRY-061): the one deliberate
           # platform-facing read in this suite, so drift between what the app
           # releases and what the platform watches bites HERE, on the causer's
           # desk, blocking the release until reconcile_app realigns them.

@@ -41,9 +41,9 @@ def _sans_comments(text: str) -> str:
     The chart checks are deliberately textual (Helm templates are not parseable
     YAML), so every substring heuristic must read code, never commentary: a
     comment naming a trigger substring once misclassified a Service as the docs
-    Service (INT-HOMELAB-056, wttg3-helper sites-service), and a comment quoting
-    `.Values.paused` once satisfied INT-HOMELAB-030 for a Deployment that never
-    rendered it - the silent variant, worse than the loud one. INT-HOMELAB-057
+    Service (INT-FOUNDRY-056, wttg3-helper sites-service), and a comment quoting
+    `.Values.paused` once satisfied INT-FOUNDRY-030 for a Deployment that never
+    rendered it - the silent variant, worse than the loud one. INT-FOUNDRY-057
     already took this stance by anchoring on the argument line; stripping at the
     read boundary generalizes it. Full-line comments only: trailing-`#` forms
     are rare in charts, and stripping them naively would mangle legitimate
@@ -53,22 +53,22 @@ def _sans_comments(text: str) -> str:
 
 
 def _is_docs_component(doc: str) -> bool:
-    """The docs-server heuristic shared by INT-HOMELAB-030/048/056: a document
+    """The docs-server heuristic shared by INT-FOUNDRY-030/048/056: a document
     is the docs component when its CODE carries the docs component label or a
     -docs-suffixed name. Callers pass comment-stripped text (`_sans_comments`)."""
     return "app.kubernetes.io/component: docs" in doc or "-docs" in doc
 
 
-@intent("INT-HOMELAB-002")
+@intent("INT-FOUNDRY-002")
 def test_has_devops_dockerfile(repo_root: Path, deploy_repo: str) -> None:
-    """INT-HOMELAB-002: <repo>/devops/Dockerfile exists."""
+    """INT-FOUNDRY-002: <repo>/devops/Dockerfile exists."""
     repo = _repo_dir(repo_root, deploy_repo)
     assert (repo / "devops" / "Dockerfile").is_file(), f"{deploy_repo}: missing devops/Dockerfile"
 
 
-@intent("INT-HOMELAB-003")
+@intent("INT-FOUNDRY-003")
 def test_compose_builds_from_devops_dockerfile(repo_root: Path, deploy_repo: str) -> None:
-    """INT-HOMELAB-003: <repo>/devops/docker-compose.yml builds from devops/Dockerfile."""
+    """INT-FOUNDRY-003: <repo>/devops/docker-compose.yml builds from devops/Dockerfile."""
     repo = _repo_dir(repo_root, deploy_repo)
     compose = repo / "devops" / "docker-compose.yml"
     assert compose.is_file(), f"{deploy_repo}: missing devops/docker-compose.yml"
@@ -78,9 +78,9 @@ def test_compose_builds_from_devops_dockerfile(repo_root: Path, deploy_repo: str
     )
 
 
-@intent("INT-HOMELAB-004")
+@intent("INT-FOUNDRY-004")
 def test_no_local_push_script(repo_root: Path, deploy_repo: str) -> None:
-    """INT-HOMELAB-004: no image-push script in <repo>/devops/."""
+    """INT-FOUNDRY-004: no image-push script in <repo>/devops/."""
     repo = _repo_dir(repo_root, deploy_repo)
     offenders = [
         p.name
@@ -92,18 +92,18 @@ def test_no_local_push_script(repo_root: Path, deploy_repo: str) -> None:
     )
 
 
-@intent("INT-HOMELAB-005")
+@intent("INT-FOUNDRY-005")
 def test_has_k8s_helm_chart(repo_root: Path, deploy_repo: str) -> None:
-    """INT-HOMELAB-005: <repo>/k8s/ is a Helm chart, not loose manifests."""
+    """INT-FOUNDRY-005: <repo>/k8s/ is a Helm chart, not loose manifests."""
     repo = _repo_dir(repo_root, deploy_repo)
     k8s = repo / "k8s"
     missing = [rel for rel in ("Chart.yaml", "templates", "values.yaml") if not (k8s / rel).exists()]
     assert not missing, f"{deploy_repo}: k8s/ is not a complete Helm chart, missing: {missing}"
 
 
-@intent("INT-HOMELAB-006")
+@intent("INT-FOUNDRY-006")
 def test_docs_is_deployable(repo_root: Path, deploy_repo: str) -> None:
-    """INT-HOMELAB-006: <repo>/docs/ ships a Dockerfile and an Astro config."""
+    """INT-FOUNDRY-006: <repo>/docs/ ships a Dockerfile and an Astro config."""
     repo = _repo_dir(repo_root, deploy_repo)
     docs = repo / "docs"
     assert docs.is_dir(), f"{deploy_repo}: missing docs/"
@@ -115,9 +115,9 @@ def test_docs_is_deployable(repo_root: Path, deploy_repo: str) -> None:
     )
 
 
-@intent("INT-HOMELAB-007")
+@intent("INT-FOUNDRY-007")
 def test_readme_documents_required_sections(repo_root: Path, deploy_repo: str) -> None:
-    """INT-HOMELAB-007: README documents Run with Docker, Develop without Docker, and Layout."""
+    """INT-FOUNDRY-007: README documents Run with Docker, Develop without Docker, and Layout."""
     repo = _repo_dir(repo_root, deploy_repo)
     readme = repo / "README.md"
     assert readme.is_file(), f"{deploy_repo}: missing README.md"
@@ -126,9 +126,9 @@ def test_readme_documents_required_sections(repo_root: Path, deploy_repo: str) -
     assert not missing, f"{deploy_repo}: README.md missing required section(s): {missing}"
 
 
-@intent("INT-HOMELAB-008")
+@intent("INT-FOUNDRY-008")
 def test_has_env_example(repo_root: Path, deploy_repo: str) -> None:
-    """INT-HOMELAB-008: <repo>/.env.example exists."""
+    """INT-FOUNDRY-008: <repo>/.env.example exists."""
     repo = _repo_dir(repo_root, deploy_repo)
     assert (repo / ".env.example").is_file(), f"{deploy_repo}: missing .env.example"
 
@@ -141,7 +141,7 @@ def _doc_types(docs_dir: Path) -> set[str]:
         return types
     # Both .md and .mdx: Starlight pages are either, and an app's Overview/landing page is
     # often an .mdx splash page (e.g. SolveOS docs/src/content/docs/index.mdx, type: Overview).
-    # Scanning only .md silently misses it and false-fails INT-HOMELAB-010 (the platform's own
+    # Scanning only .md silently misses it and false-fails INT-FOUNDRY-010 (the platform's own
     # docs.test.ts already walks both).
     for md in (*content.rglob("*.md"), *content.rglob("*.mdx")):
         m = re.match(r"^---\n(.*?)\n---", md.read_text(encoding="utf-8"), re.DOTALL)
@@ -153,9 +153,9 @@ def _doc_types(docs_dir: Path) -> set[str]:
     return types
 
 
-@intent("INT-HOMELAB-009")
+@intent("INT-FOUNDRY-009")
 def test_has_root_intent_spec(repo_root: Path, deploy_repo: str) -> None:
-    """INT-HOMELAB-009: <repo>/intent.yaml exists AND carries at least one
+    """INT-FOUNDRY-009: <repo>/intent.yaml exists AND carries at least one
     canonical CSD-INTENT-01 claim.
 
     Existence alone is not the contract: csd-intent reads a file in a foreign
@@ -188,9 +188,9 @@ def test_has_root_intent_spec(repo_root: Path, deploy_repo: str) -> None:
     )
 
 
-@intent("INT-HOMELAB-010")
+@intent("INT-FOUNDRY-010")
 def test_docs_has_required_pages(repo_root: Path, deploy_repo: str) -> None:
-    """INT-HOMELAB-010: docs/ ships an Overview page and a Components/Architecture (Reference) page."""
+    """INT-FOUNDRY-010: docs/ ships an Overview page and a Components/Architecture (Reference) page."""
     repo = _repo_dir(repo_root, deploy_repo)
     types = _doc_types(repo / "docs")
     missing = [t for t in ("Overview", "Reference") if t not in types]
@@ -199,9 +199,9 @@ def test_docs_has_required_pages(repo_root: Path, deploy_repo: str) -> None:
     )
 
 
-@intent("INT-HOMELAB-018")
+@intent("INT-FOUNDRY-018")
 def test_docs_honor_docs_base(repo_root: Path, deploy_repo: str) -> None:
-    """INT-HOMELAB-018: docs honor DOCS_BASE so they mount under the portal prefix.
+    """INT-FOUNDRY-018: docs honor DOCS_BASE so they mount under the portal prefix.
 
     astro.config.* must derive `base` from DOCS_BASE, and docs/Dockerfile must
     declare ARG DOCS_BASE, feed it into the build, and serve the built site under
@@ -232,9 +232,9 @@ def test_docs_honor_docs_base(repo_root: Path, deploy_repo: str) -> None:
     )
 
 
-@intent("INT-HOMELAB-019")
+@intent("INT-FOUNDRY-019")
 def test_has_commit_message_hook_config(repo_root: Path, deploy_repo: str) -> None:
-    """INT-HOMELAB-019: <repo>/.pre-commit-config.yaml ships a Conventional-Commit commit-msg hook.
+    """INT-FOUNDRY-019: <repo>/.pre-commit-config.yaml ships a Conventional-Commit commit-msg hook.
 
     Asserts the committed config that *defines* the hook, not its installation: the
     .git/hooks wiring is per-clone (`pre-commit install`) and never committed, so it
@@ -258,9 +258,9 @@ def test_has_commit_message_hook_config(repo_root: Path, deploy_repo: str) -> No
     )
 
 
-@intent("INT-HOMELAB-013")
+@intent("INT-FOUNDRY-013")
 def test_has_ci_caller(repo_root: Path, deploy_repo: str) -> None:
-    """INT-HOMELAB-013: <repo>/.github/workflows/build.yml calls the shared ci reusable workflow."""
+    """INT-FOUNDRY-013: <repo>/.github/workflows/build.yml calls the shared ci reusable workflow."""
     repo = _repo_dir(repo_root, deploy_repo)
     caller = repo / ".github" / "workflows" / "build.yml"
     assert caller.is_file(), f"{deploy_repo}: missing .github/workflows/build.yml (the CI caller; ADR-019)"
@@ -270,9 +270,9 @@ def test_has_ci_caller(repo_root: Path, deploy_repo: str) -> None:
     )
 
 
-@intent("INT-HOMELAB-063")
+@intent("INT-FOUNDRY-063")
 def test_has_app_owned_test_workflow(repo_root: Path, deploy_repo: str) -> None:
-    """INT-HOMELAB-063: <repo>/.github/workflows/test.yml exists and runs on pull_request.
+    """INT-FOUNDRY-063: <repo>/.github/workflows/test.yml exists and runs on pull_request.
 
     build.yml is a thin caller so release and publish cannot drift; a test suite is
     genuinely per-app and has nothing to share, which is exactly why nothing ensured
@@ -297,9 +297,9 @@ def test_has_app_owned_test_workflow(repo_root: Path, deploy_repo: str) -> None:
     )
 
 
-@intent("INT-HOMELAB-020")
+@intent("INT-FOUNDRY-020")
 def test_has_deploy_branch(repo_root: Path, deploy_repo: str) -> None:
-    """INT-HOMELAB-020: origin carries at least one deploy-<install> branch with
+    """INT-FOUNDRY-020: origin carries at least one deploy-<install> branch with
     dev/ + prod/ env config (ADR-025/032).
 
     Each install reconciles its own orphan `deploy-<install>` branch (ADR-032),
@@ -353,9 +353,9 @@ def test_has_deploy_branch(repo_root: Path, deploy_repo: str) -> None:
         )
 
 
-@intent("INT-HOMELAB-022")
+@intent("INT-FOUNDRY-022")
 def test_docs_ships_starlight_bundle(repo_root: Path, deploy_repo: str) -> None:
-    """INT-HOMELAB-022: <repo>/docs/intent.yaml ships the STARLIGHT intent bundle.
+    """INT-FOUNDRY-022: <repo>/docs/intent.yaml ships the STARLIGHT intent bundle.
 
     The docs site is scaffolded by bootstrap-starlight, which auto-applies the
     STARLIGHT intent bundle so the page frontmatter is attested by vitest-intent
@@ -376,9 +376,9 @@ def test_docs_ships_starlight_bundle(repo_root: Path, deploy_repo: str) -> None:
     )
 
 
-@intent("INT-HOMELAB-029")
+@intent("INT-FOUNDRY-029")
 def test_configmap_consumers_carry_checksum_annotation(repo_root: Path, deploy_repo: str) -> None:
-    """INT-HOMELAB-029: a Deployment consuming a ConfigMap via envFrom carries checksum/config.
+    """INT-FOUNDRY-029: a Deployment consuming a ConfigMap via envFrom carries checksum/config.
 
     Env vars from envFrom are read only at container start and Kubernetes never
     restarts pods on a ConfigMap change, so without a checksum/config pod-template
@@ -391,7 +391,7 @@ def test_configmap_consumers_carry_checksum_annotation(repo_root: Path, deploy_r
     """
     repo = _repo_dir(repo_root, deploy_repo)
     templates = repo / "k8s" / "templates"
-    assert templates.is_dir(), f"{deploy_repo}: missing k8s/templates/ (INT-HOMELAB-005)"
+    assert templates.is_dir(), f"{deploy_repo}: missing k8s/templates/ (INT-FOUNDRY-005)"
     offenders: list[str] = []
     for tpl in sorted((*templates.rglob("*.yaml"), *templates.rglob("*.yml"))):
         for doc in re.split(
@@ -411,9 +411,9 @@ def test_configmap_consumers_carry_checksum_annotation(repo_root: Path, deploy_r
     )
 
 
-@intent("INT-HOMELAB-030")
+@intent("INT-FOUNDRY-030")
 def test_workloads_honor_paused(repo_root: Path, deploy_repo: str) -> None:
-    """INT-HOMELAB-030: every non-docs workload renders its replicas from .Values.paused.
+    """INT-FOUNDRY-030: every non-docs workload renders its replicas from .Values.paused.
 
     A single node has finite capacity, so an onboarded app is switchable off
     without being offboarded: the platform scales it to zero by overriding
@@ -425,13 +425,13 @@ def test_workloads_honor_paused(repo_root: Path, deploy_repo: str) -> None:
     """
     repo = _repo_dir(repo_root, deploy_repo)
     values = repo / "k8s" / "values.yaml"
-    assert values.is_file(), f"{deploy_repo}: missing k8s/values.yaml (INT-HOMELAB-005)"
+    assert values.is_file(), f"{deploy_repo}: missing k8s/values.yaml (INT-FOUNDRY-005)"
     loaded = yaml.safe_load(values.read_text(encoding="utf-8")) or {}
     assert "paused" in loaded, (
         f"{deploy_repo}: k8s/values.yaml declares no top-level `paused` default (REF-Homelab section 4)"
     )
     templates = repo / "k8s" / "templates"
-    assert templates.is_dir(), f"{deploy_repo}: missing k8s/templates/ (INT-HOMELAB-005)"
+    assert templates.is_dir(), f"{deploy_repo}: missing k8s/templates/ (INT-FOUNDRY-005)"
     offenders: list[str] = []
     for tpl in sorted((*templates.rglob("*.yaml"), *templates.rglob("*.yml"))):
         for doc in re.split(
@@ -450,9 +450,9 @@ def test_workloads_honor_paused(repo_root: Path, deploy_repo: str) -> None:
     )
 
 
-@intent("INT-HOMELAB-023")
+@intent("INT-FOUNDRY-023")
 def test_auth_existing_secret_has_example(repo_root: Path, deploy_repo: str) -> None:
-    """INT-HOMELAB-023: a non-empty auth.existingSecret ships k8s/secrets/<name>.env.example.
+    """INT-FOUNDRY-023: a non-empty auth.existingSecret ships k8s/secrets/<name>.env.example.
 
     A fail-closed app names its auth Secret via auth.existingSecret and serves nothing
     until that Secret exists; the Secret is provisioned out of band (ADR-017) from a
@@ -462,7 +462,7 @@ def test_auth_existing_secret_has_example(repo_root: Path, deploy_repo: str) -> 
     """
     repo = _repo_dir(repo_root, deploy_repo)
     values = repo / "k8s" / "values.yaml"
-    assert values.is_file(), f"{deploy_repo}: missing k8s/values.yaml (INT-HOMELAB-005)"
+    assert values.is_file(), f"{deploy_repo}: missing k8s/values.yaml (INT-FOUNDRY-005)"
     data = yaml.safe_load(values.read_text(encoding="utf-8")) or {}
     secret_name = ((data.get("auth") or {}).get("existingSecret") or "").strip()
     if not secret_name:
@@ -476,11 +476,11 @@ def test_auth_existing_secret_has_example(repo_root: Path, deploy_repo: str) -> 
     )
 
 
-@intent("INT-HOMELAB-039")
+@intent("INT-FOUNDRY-039")
 def test_app_never_provides_packages_token(repo_root: Path, deploy_repo: str) -> None:
-    """INT-HOMELAB-039: no app workflow provides an npm registry token itself.
+    """INT-FOUNDRY-039: no app workflow provides an npm registry token itself.
 
-    The token counterpart of the build thin-caller rule (INT-HOMELAB-013). The
+    The token counterpart of the build thin-caller rule (INT-FOUNDRY-013). The
     @psa-department-of-engineering packages are on the public npm registry (csd-library
     ADR-0003), so installing them is anonymous and there is no credential to wire at all.
     Asserting the single invariant - the app does not set the token variable - rather than
@@ -512,7 +512,7 @@ def test_app_never_provides_packages_token(repo_root: Path, deploy_repo: str) ->
     )
 
 
-# --- chart delivery-wiring guards (ADR-034 era; INT-HOMELAB-045..047) -------
+# --- chart delivery-wiring guards (ADR-034 era; INT-FOUNDRY-045..047) -------
 # Three defect classes shipped by autonomous deliveries and only discovered
 # live (ImagePullBackOff, an unregistered hostname, an unpinned sidecar):
 # each is now a repo-CI failure instead. Text-level checks in the style of the
@@ -551,12 +551,12 @@ def _flat_items(node, path=""):
         yield path, node
 
 
-@intent("INT-HOMELAB-045")
+@intent("INT-FOUNDRY-045")
 def test_chart_workloads_reference_the_pull_secret(repo_root: Path, deploy_repo: str) -> None:
-    """INT-HOMELAB-045: every Deployment template mounts imagePullSecrets.
+    """INT-FOUNDRY-045: every Deployment template mounts imagePullSecrets.
 
     The fleet's images are private GHCR; network/ghcr-pull auto-reflects into
-    every namespace (INT-HOMELAB-044), but a pod only presents it if the chart
+    every namespace (INT-FOUNDRY-044), but a pod only presents it if the chart
     references it. A chart without imagePullSecrets pulls anonymously and lands
     in ImagePullBackOff on first deploy (token-racing-track, shattered-catacombs),
     a failure only visible live. Holds vacuously for repos without a chart.
@@ -574,9 +574,9 @@ def test_chart_workloads_reference_the_pull_secret(repo_root: Path, deploy_repo:
     )
 
 
-@intent("INT-HOMELAB-048")
+@intent("INT-FOUNDRY-048")
 def test_docs_deployment_labels_pod_for_homepage_tile(repo_root: Path, deploy_repo: str) -> None:
-    """INT-HOMELAB-048: the docs Deployment labels its pod app.kubernetes.io/name: <chart>-docs.
+    """INT-FOUNDRY-048: the docs Deployment labels its pod app.kubernetes.io/name: <chart>-docs.
 
     An app's homepage tile (the routes in its teams/<app>/ folder on the
     install's deploy branch) hangs off the app's <app>-docs docs HTTPRoute,
@@ -598,7 +598,7 @@ def test_docs_deployment_labels_pod_for_homepage_tile(repo_root: Path, deploy_re
         for doc in re.split(r"^---\s*$", text, flags=re.MULTILINE):
             if "kind: Deployment" not in doc:
                 continue
-            # The docs server, by the same heuristic INT-HOMELAB-030 uses to except it.
+            # The docs server, by the same heuristic INT-FOUNDRY-030 uses to except it.
             if not _is_docs_component(doc):
                 continue
             if not name_docs.search(doc):
@@ -612,11 +612,11 @@ def test_docs_deployment_labels_pod_for_homepage_tile(repo_root: Path, deploy_re
     )
 
 
-@intent("INT-HOMELAB-056")
+@intent("INT-FOUNDRY-056")
 def test_docs_deployment_ships_the_route_derived_docs_service(
     repo_root: Path, deploy_repo: str
 ) -> None:
-    """INT-HOMELAB-056: a chart with a docs Deployment ships the docs Service the
+    """INT-FOUNDRY-056: a chart with a docs Deployment ships the docs Service the
     docs HTTPRoute's derived backendRef actually targets.
 
     The platform's teams-skeleton docs route (rendered at onboarding) DERIVES its
@@ -638,7 +638,7 @@ def test_docs_deployment_ships_the_route_derived_docs_service(
     templates = _template_texts(repo)
 
     def _docs_component_docs(kind: str) -> list[tuple[str, str]]:
-        # The docs server's documents, by the same heuristic INT-HOMELAB-030/048 use.
+        # The docs server's documents, by the same heuristic INT-FOUNDRY-030/048 use.
         found: list[tuple[str, str]] = []
         for fname, text in templates.items():
             for doc in re.split(r"^---\s*$", text, flags=re.MULTILINE):
@@ -654,7 +654,7 @@ def test_docs_deployment_ships_the_route_derived_docs_service(
         return
 
     chart_file = _chart_dir(repo) / "Chart.yaml"
-    assert chart_file.is_file(), f"{deploy_repo}: missing k8s/Chart.yaml (INT-HOMELAB-005)"
+    assert chart_file.is_file(), f"{deploy_repo}: missing k8s/Chart.yaml (INT-FOUNDRY-005)"
     chart = str((yaml.safe_load(chart_file.read_text(encoding="utf-8")) or {}).get("name") or "")
     assert chart, f"{deploy_repo}: k8s/Chart.yaml declares no chart name"
     expected = f"svc-{chart}-docs" if chart[0].isdigit() else f"{chart}-docs"
@@ -716,11 +716,11 @@ def _parent_ref_names(text: str) -> list[str]:
     return names
 
 
-@intent("INT-HOMELAB-046")
+@intent("INT-FOUNDRY-046")
 def test_chart_routes_bind_only_the_apps_own_gateway(
     repo_root: Path, deploy_repo: str
 ) -> None:
-    """INT-HOMELAB-046: every chart HTTPRoute attaches to the app's own Gateway
+    """INT-FOUNDRY-046: every chart HTTPRoute attaches to the app's own Gateway
     (parentRef name = the app, namespace = network) and the chart carries the
     app hostname.
 
@@ -813,9 +813,9 @@ def test_chart_routes_bind_only_the_apps_own_gateway(
     )
 
 
-@intent("INT-HOMELAB-047")
+@intent("INT-FOUNDRY-047")
 def test_chart_pins_third_party_images(repo_root: Path, deploy_repo: str) -> None:
-    """INT-HOMELAB-047: no third-party image reference floats on :latest.
+    """INT-FOUNDRY-047: no third-party image reference floats on :latest.
 
     First-party images may default to :latest in the chart (the deploy branch
     pins the served tag and Image Updater maintains it: that split of
@@ -840,11 +840,11 @@ def test_chart_pins_third_party_images(repo_root: Path, deploy_repo: str) -> Non
     )
 
 
-@intent("INT-HOMELAB-057")
+@intent("INT-FOUNDRY-057")
 def test_oauth2_proxy_provider_and_api_route_flag(
     repo_root: Path, deploy_repo: str
 ) -> None:
-    """INT-HOMELAB-057: an oauth2-proxy sidecar uses --provider=oidc and --api-route.
+    """INT-FOUNDRY-057: an oauth2-proxy sidecar uses --provider=oidc and --api-route.
 
     keycloak-oidc audience-checks the access token, whose Keycloak default aud is
     'account' not the client, so every login callback 500s; the generic oidc
@@ -877,9 +877,9 @@ def test_oauth2_proxy_provider_and_api_route_flag(
 # The binding checks make that shape a repo-CI failure instead.
 
 
-@intent("INT-HOMELAB-034")
+@intent("INT-FOUNDRY-034")
 def test_app_oidc_gate_binds_the_apps_own_realm(repo_root: Path, deploy_repo: str) -> None:
-    """INT-HOMELAB-034: every identity reference in an app chart is the app's OWN.
+    """INT-FOUNDRY-034: every identity reference in an app chart is the app's OWN.
 
     Realm-per-app is enforced physically by the credential side: keycloak-<app>
     is minted in the app's own namespace by its grant, and a foreign app's
@@ -905,7 +905,7 @@ def test_app_oidc_gate_binds_the_apps_own_realm(repo_root: Path, deploy_repo: st
 
     own_secret = f"keycloak-{deploy_repo}"
     # keycloak-oidc is oauth2-proxy's provider identifier, an argument-line value
-    # (the misconfiguration INT-HOMELAB-057 flags), not an app artifact.
+    # (the misconfiguration INT-FOUNDRY-057 flags), not an app artifact.
     allowed = {own_secret, f"keycloak-realm-{deploy_repo}", "keycloak-oidc"}
     foreign = sorted(
         {
@@ -977,11 +977,11 @@ def _secret_ref_blocks(text: str) -> list[tuple[int, list[str]]]:
     return blocks
 
 
-@intent("INT-HOMELAB-062")
+@intent("INT-FOUNDRY-062")
 def test_platform_minted_credentials_are_not_optional(
     repo_root: Path, deploy_repo: str
 ) -> None:
-    """INT-HOMELAB-062: no `optional: true` on a platform-minted credential.
+    """INT-FOUNDRY-062: no `optional: true` on a platform-minted credential.
 
     Fail-closed must mean the pod does not start. `optional: true` inverts it -
     the container starts with the credential absent, so the proxy crash-loops
@@ -1032,9 +1032,9 @@ def test_platform_minted_credentials_are_not_optional(
     )
 
 
-@intent("INT-HOMELAB-037")
+@intent("INT-FOUNDRY-037")
 def test_mcp_app_keeps_basic_on_machine_door(repo_root: Path, deploy_repo: str) -> None:
-    """INT-HOMELAB-037: an OIDC app whose oauth2-proxy skips a machine path (/mcp)
+    """INT-FOUNDRY-037: an OIDC app whose oauth2-proxy skips a machine path (/mcp)
     MUST disable header stripping on the skip (--skip-auth-strip-headers=false)
     and scope the app's own gate to the machine door (<APP>_AUTH_SCOPE=mcp).
 
@@ -1069,7 +1069,7 @@ def test_mcp_app_keeps_basic_on_machine_door(repo_root: Path, deploy_repo: str) 
         )
 
 
-# --- the reconcile check (INT-HOMELAB-061): the causer's-desk drift brake ----
+# --- the reconcile check (INT-FOUNDRY-061): the causer's-desk drift brake ----
 # The Image Updater aliases on the install branch are a frozen declaration;
 # what the repo releases is a moving truth. Their drift silently stops
 # promotion (no crash, no red status: the alexandria shape), and it is caused
@@ -1129,7 +1129,7 @@ def _platform_deploy_branches() -> list[str] | None:
 def _local_released_set(repo: Path, app: str) -> set[str] | None:
     """The GHCR packages this checkout's CI publishes: the compose build:
     services (named by image: basename) plus <app>-docs when docs/Dockerfile
-    exists. None when the compose cannot be read (INT-HOMELAB-003 owns that
+    exists. None when the compose cannot be read (INT-FOUNDRY-003 owns that
     failure; this check does not double-report it)."""
     compose_path = repo / "devops" / "docker-compose.yml"
     if not compose_path.is_file():
@@ -1174,11 +1174,11 @@ def _watched_packages(application_text: str) -> set[str] | None:
     return watched or None
 
 
-@intent("INT-HOMELAB-061")
+@intent("INT-FOUNDRY-061")
 def test_released_set_reconciled_with_the_platform(
     repo_root: Path, deploy_repo: str
 ) -> None:
-    """INT-HOMELAB-061: what this repo releases matches the promotion record
+    """INT-FOUNDRY-061: what this repo releases matches the promotion record
     every declaring install carries for it. Growing the released set past the
     record is an intended interim state exactly once: between this failure and
     the reconcile_app that realigns the declaration - reconcile FIRST, then
@@ -1190,7 +1190,7 @@ def test_released_set_reconciled_with_the_platform(
     if released is None:
         pytest.skip(
             f"{deploy_repo}: devops/docker-compose.yml unreadable; the released "
-            "set has no source (INT-HOMELAB-003 owns that failure)"
+            "set has no source (INT-FOUNDRY-003 owns that failure)"
         )
     branches = _platform_deploy_branches()
     if branches is None:

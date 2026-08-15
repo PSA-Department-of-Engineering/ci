@@ -18,7 +18,7 @@ checkout's parent directory, kept for the (root, name) call shape.
 Local pre-flight: run against any app clone with
   CONFORMANCE_APP_DIR=../<app> CONFORMANCE_APP_NAME=<app> pytest conformance -q
 Every check here reads the app checkout alone, with ONE deliberate exception:
-the reconcile check (INT-HOMELAB-061) reads the platform repository's deploy-*
+the reconcile check (INT-FOUNDRY-061) reads the platform repository's deploy-*
 branches read-only (PLATFORM_REPO + PLATFORM_READ_TOKEN), because the drift it
 catches - the app growing past the promotion record the platform holds for
 it - is caused by app-side changes and must bite in the app's own pipeline,

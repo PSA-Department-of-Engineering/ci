@@ -4,7 +4,7 @@
 # by the repos they serve, and nothing in them runs against this repo. So until
 # this file existed, conformance/intent.yaml was audited nowhere: build.yml runs
 # `csd-intent .` against the APP's checkout, deliberately before .ci-suite/ lands
-# in the tree so this suite's INT-HOMELAB markers stay out of the app's audit.
+# in the tree so this suite's INT-FOUNDRY markers stay out of the app's audit.
 #
 # That gap matters more here than in a normal repo, because this suite runs in
 # every onboarded app's pipeline. A claim that fails CSD-INTENT-01 schema, an
