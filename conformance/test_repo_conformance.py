@@ -1251,3 +1251,78 @@ def test_released_set_reconciled_with_the_platform(
         "manager and run the studio's reconcile_app (fresh image_components), "
         "then re-run this build:\n  " + "\n  ".join(problems)
     )
+
+
+# The build trees an app repo's own tooling writes, each keyed on the evidence
+# that the repo runs the tool at all. The rule below demands a pattern only
+# where the repo carries the thing that generates it, so a Python-free repo is
+# never asked to ignore __pycache__/ and a repo with no Astro site is never
+# asked about .astro/ - a gate that fires on a tree the repo cannot produce is
+# noise, and noise is how a gate gets skipped.
+_IGNORE_WALK_SKIP = {".git", "node_modules", ".venv", "venv", "dist", ".astro", "__pycache__"}
+
+
+def _generated_trees(repo: Path) -> list[tuple[str, str]]:
+    """(probe path, pattern) per build tree this checkout's tooling writes."""
+    node_dirs: set[str] = set()
+    astro_dirs: set[str] = set()
+    has_python = False
+    for current, subdirs, files in os.walk(repo):
+        subdirs[:] = [d for d in subdirs if d not in _IGNORE_WALK_SKIP]
+        here = Path(current).relative_to(repo).as_posix()
+        prefix = "" if here == "." else f"{here}/"
+        for name in files:
+            if name == "package.json":
+                node_dirs.add(prefix)
+            elif name.startswith("astro.config."):
+                astro_dirs.add(prefix)
+            elif name.endswith(".py"):
+                has_python = True
+    demands = [(f"{p}node_modules/probe", "node_modules/") for p in sorted(node_dirs)]
+    for p in sorted(astro_dirs):
+        demands.append((f"{p}.astro/probe", ".astro/"))
+        demands.append((f"{p}dist/probe", "dist/"))
+    if has_python:
+        demands.append(("__pycache__/probe.pyc", "__pycache__/"))
+    return demands
+
+
+def _is_ignored(repo: Path, relative: str) -> bool:
+    """git's own answer, so nested .gitignore files and negations count."""
+    result = subprocess.run(
+        ["git", "-C", str(repo), "check-ignore", "-q", relative],
+        capture_output=True,
+    )
+    return result.returncode == 0
+
+
+@intent("INT-FOUNDRY-064")
+def test_generated_trees_are_git_ignored(repo_root: Path, deploy_repo: str) -> None:
+    """INT-FOUNDRY-064: the repo ignores the build trees its own tooling writes.
+
+    The scaffold shipped no .gitignore at all until 2026-08-15, so a repo born
+    from it had its own artifacts untracked-and-not-ignored from the first
+    clone: `npm install` in docs/ writes node_modules/, `astro build` writes
+    dist/ and .astro/, pytest writes __pycache__/, and one `git add -A`
+    committed them. Nothing caught it, so eight app repos carried the gap and
+    the files patched in by hand afterwards agreed with each other nowhere -
+    playbook-studio had a vitest cache committed under node_modules/ to show
+    for it. The scaffold now ships the file; this keeps it from rotting back
+    out, in the repos that predate it as much as the ones that come after.
+
+    Demanded per evidence, never blanket: git answers the ignore question
+    itself, so a nested .gitignore or a negation counts exactly as git counts
+    it.
+    """
+    repo = _repo_dir(repo_root, deploy_repo)
+    if not (repo / ".git").exists():
+        pytest.skip(f"{deploy_repo}: checkout carries no .git; git cannot answer")
+    missing = [
+        f"{pattern} (nothing ignores {probe.rsplit('/', 1)[0] or '.'})"
+        for probe, pattern in _generated_trees(repo)
+        if not _is_ignored(repo, probe)
+    ]
+    assert not missing, (
+        f"{deploy_repo}: the repo generates build trees nothing ignores, so "
+        "`git add -A` commits them:\n  " + "\n  ".join(missing)
+    )

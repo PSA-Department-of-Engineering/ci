@@ -348,3 +348,17 @@ INT-FOUNDRY-063:
     component: RepoStandard
     type: invariant
   criticality: high
+
+# --- the repo ignores what it generates (INT-FOUNDRY-064): the scaffold shipped
+# --- no .gitignore until 2026-08-15, so a repo committed its own build trees ---
+
+INT-FOUNDRY-064:
+  version: 1.0.0
+  status: active
+  statement: "An app repo MUST git-ignore every build tree its own tooling writes: node_modules/ beside each package.json, dist/ and .astro/ beside each Astro config, and __pycache__/ where the repo carries Python. The demand is per evidence - a repo is never asked to ignore a tree it cannot produce."
+  rationale: "The app-repo scaffold rendered 26 contract files and no .gitignore, so every repo born from it had its artifacts untracked-and-not-ignored from the first clone and one `git add -A` committed them. No check noticed, so eight app repos carried the gap and the files hand-patched in afterwards agreed with each other nowhere - two still missed .astro/ two months on, and playbook-studio had a vitest cache committed under node_modules/. The scaffold ships the file now; this claim is what keeps it from rotting back out, in the repos that predate it as much as the ones that come after."
+  test:
+    scope: integration
+    component: RepoStandard
+    type: invariant
+  criticality: medium
