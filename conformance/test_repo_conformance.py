@@ -300,12 +300,18 @@ def test_has_app_owned_test_workflow(repo_root: Path, deploy_repo: str) -> None:
 @intent("INT-FOUNDRY-020")
 def test_has_deploy_branch(repo_root: Path, deploy_repo: str) -> None:
     """INT-FOUNDRY-020: origin carries at least one deploy-<install> branch with
-    dev/ + prod/ env config (ADR-025/032).
+    prod/ and any further env folders the branch declares (ADR-025/032).
 
     Each install reconciles its own orphan `deploy-<install>` branch (ADR-032),
     so a repo that runs on N installs carries N deploy branches. Checked over
     git, not the working tree: enumerate origin's deploy-* heads, fetch each,
-    and confirm every env folder ships a values.yaml and a Chart.yaml. The
+    and confirm prod/ (the environment every install reconciles) ships a
+    values.yaml and a Chart.yaml, and that any OTHER top-level env folder the
+    branch carries is complete too - an env folder that exists must never come
+    without its pair. The env SET is install-owned: an install that does not
+    declare a dev environment does not carry dev/ (the platform's own
+    per-install suite checks what the manifest declares); the branch's contract
+    is that every folder on it is a complete env folder. The
     which-installs-declare-this-app direction (each declaring install's branch
     present) is the platform suite's per-install delivery check, which reads the
     manifests this suite cannot; here the app's own origin is the source.
@@ -338,9 +344,29 @@ def test_has_deploy_branch(repo_root: Path, deploy_repo: str) -> None:
             f"{deploy_repo}: no {branch!r} branch on origin "
             f"(ADR-032, the orphan branch ArgoCD watches): {fetch.stderr.strip()}"
         )
+        # prod/ is the environment every install reconciles and must always
+        # ship. Any further top-level env folder (dev/ and others) is
+        # install-owned and optional - an install that does not declare a dev
+        # environment does not carry one - but an env folder that EXISTS must
+        # be complete: values.yaml and Chart.yaml, never one without the other.
+        listing = subprocess.run(
+            ["git", "-C", str(repo), "ls-tree", "-d", "--name-only", "FETCH_HEAD"],
+            capture_output=True,
+            text=True,
+        )
+        assert listing.returncode == 0, (
+            f"{deploy_repo}: cannot list {branch!r} branch contents: {listing.stderr.strip()}"
+        )
+        env_dirs = [
+            line.rstrip("/")
+            for line in listing.stdout.splitlines()
+            if line and line.rstrip("/") != "prod"
+        ]
         missing = [
             rel
-            for rel in ("dev/values.yaml", "dev/Chart.yaml", "prod/values.yaml", "prod/Chart.yaml")
+            for rel in ["prod/values.yaml", "prod/Chart.yaml"]
+            + [f"{d}/values.yaml" for d in env_dirs]
+            + [f"{d}/Chart.yaml" for d in env_dirs]
             if subprocess.run(
                 ["git", "-C", str(repo), "cat-file", "-e", f"FETCH_HEAD:{rel}"],
                 capture_output=True,
@@ -349,7 +375,7 @@ def test_has_deploy_branch(repo_root: Path, deploy_repo: str) -> None:
         ]
         assert not missing, (
             f"{deploy_repo}: {branch} branch missing {missing} "
-            "(ADR-025: dev/ and prod/, each a values.yaml and a Chart.yaml pinning the published chart)"
+            "(ADR-025: prod/ plus any other env folder carried, each a values.yaml and a Chart.yaml pinning the published chart)"
         )
 
 

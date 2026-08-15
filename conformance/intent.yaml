@@ -143,10 +143,10 @@ INT-FOUNDRY-019:
 # --- deploy-branch delivery conformance (ADR-022, ADR-025) ---
 
 INT-FOUNDRY-020:
-  version: 1.0.0
+  version: 1.1.0
   status: active
-  statement: "Every deploy repo MUST have a deploy orphan branch on origin carrying per-environment config: dev/ and prod/, each a values.yaml and a Chart.yaml pinning a published chart version."
-  rationale: "ArgoCD watches the deploy branch per environment (ADR-022, ADR-025); promotion is a change to the chart version pinned there, kept separate from code on main. A registered, built app with no deploy branch is never delivered. Checked over git because the branch is orphan and not in the working tree, so it is a local maintainer pre-flight."
+  statement: "Every deploy repo MUST have a deploy orphan branch on origin carrying per-environment config: prod/ and any other env folder the branch carries, each a values.yaml and a Chart.yaml pinning a published chart version."
+  rationale: "ArgoCD watches the deploy branch per environment (ADR-022, ADR-025); promotion is a change to the chart version pinned there, kept separate from code on main. A registered, built app with no deploy branch is never delivered. The env set is install-owned: an install reconciles the environments its manifest declares (prod/ always), so a dev/ folder exists only when the install declares a dev environment - but an env folder that exists must be complete. Checked over git because the branch is orphan and not in the working tree, so it is a local maintainer pre-flight."
   test:
     scope: integration
     component: DeployRegistry
