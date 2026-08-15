@@ -1259,7 +1259,23 @@ def test_released_set_reconciled_with_the_platform(
 # never asked to ignore __pycache__/ and a repo with no Astro site is never
 # asked about .astro/ - a gate that fires on a tree the repo cannot produce is
 # noise, and noise is how a gate gets skipped.
-_IGNORE_WALK_SKIP = {".git", "node_modules", ".venv", "venv", "dist", ".astro", "__pycache__"}
+# .ci-suite is THIS suite's own checkout, which the shared workflow lands
+# inside the app workspace before running us: counted as evidence, its Python
+# tells every app repo it carries Python and demands __pycache__/ of a repo
+# that has none - 2ez4tv went red on exactly that, passing locally where no
+# .ci-suite exists. The workflow already dodges the same hazard for csd-intent
+# by auditing before this checkout lands; a walk that runs after it must skip
+# the directory by name.
+_IGNORE_WALK_SKIP = {
+    ".git",
+    ".ci-suite",
+    "node_modules",
+    ".venv",
+    "venv",
+    "dist",
+    ".astro",
+    "__pycache__",
+}
 
 
 def _generated_trees(repo: Path) -> list[tuple[str, str]]:

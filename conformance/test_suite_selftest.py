@@ -16,7 +16,7 @@ conformance.
 
 from __future__ import annotations
 
-from test_repo_conformance import _is_docs_component, _sans_comments
+from test_repo_conformance import _generated_trees, _is_docs_component, _sans_comments
 
 # The exact failure shape of 2026-08-01 (wttg3-helper run 30684103353): a
 # non-docs Service whose comment mentions the derived "<chart>-docs" pattern.
@@ -87,3 +87,25 @@ def test_a_comment_never_exempts_a_workload_from_the_paused_rule() -> None:
     # exemption of INT-FOUNDRY-030 (the third way this class of defect bites).
     commented = 'kind: Deployment\n# named like the "<chart>-docs" pattern\nspec:\n  replicas: 1\n'
     assert not _is_docs_component(_sans_comments(commented))
+
+
+# The suite's own checkout, landed inside the app workspace by the shared
+# workflow as .ci-suite/, is not the app's evidence. Counted as such, its
+# Python demanded __pycache__/ of a Python-free repo and 2ez4tv went red on a
+# tree it cannot produce (run 31879419828) - invisible locally, where no
+# .ci-suite exists. The other direction is asserted too: the app's OWN Python
+# must still be seen, or the fix would simply blind the rule.
+def test_the_suites_own_checkout_is_not_the_apps_evidence(tmp_path) -> None:
+    suite = tmp_path / ".ci-suite" / "conformance"
+    suite.mkdir(parents=True)
+    (suite / "test_repo_conformance.py").write_text("x = 1\n", encoding="utf-8")
+    (tmp_path / "package.json").write_text("{}\n", encoding="utf-8")
+    patterns = {pattern for _, pattern in _generated_trees(tmp_path)}
+    assert "__pycache__/" not in patterns, "the suite's own Python is not the app's"
+    assert "node_modules/" in patterns, "the app's own package.json is still seen"
+
+
+def test_the_apps_own_python_is_still_demanded(tmp_path) -> None:
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_thing.py").write_text("x = 1\n", encoding="utf-8")
+    assert "__pycache__/" in {pattern for _, pattern in _generated_trees(tmp_path)}
