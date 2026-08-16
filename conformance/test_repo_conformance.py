@@ -338,18 +338,42 @@ def test_has_deploy_branch(repo_root: Path, deploy_repo: str) -> None:
             f"{deploy_repo}: no {branch!r} branch on origin "
             f"(ADR-032, the orphan branch ArgoCD watches): {fetch.stderr.strip()}"
         )
-        missing = [
-            rel
-            for rel in ("dev/values.yaml", "dev/Chart.yaml", "prod/values.yaml", "prod/Chart.yaml")
-            if subprocess.run(
-                ["git", "-C", str(repo), "cat-file", "-e", f"FETCH_HEAD:{rel}"],
-                capture_output=True,
-            ).returncode
-            != 0
-        ]
-        assert not missing, (
-            f"{deploy_repo}: {branch} branch missing {missing} "
-            "(ADR-025: dev/ and prod/, each a values.yaml and a Chart.yaml pinning the published chart)"
+        # Which environments a branch carries is the INSTALL's declaration
+        # (its foundry.yaml names them, in order, and the platform's own
+        # conformance holds the branch to that list in both directions). CI
+        # runs in the app's repo and cannot read that declaration, so it
+        # checks the shape it can see: at least one environment folder, and
+        # every folder complete. A branch naming no environment gives its
+        # reconciler nothing to deliver; a half-written one deploys a chart
+        # with no values or values no chart pins.
+        listing = subprocess.run(
+            ["git", "-C", str(repo), "ls-tree", "-r", "--name-only", "FETCH_HEAD"],
+            capture_output=True,
+            text=True,
+        )
+        assert listing.returncode == 0, (
+            f"{deploy_repo}: cannot read the {branch} tree: {listing.stderr.strip()}"
+        )
+        paths = set(listing.stdout.split())
+        environments = {
+            path.split("/", 1)[0]
+            for path in paths
+            if path.count("/") == 1 and path.rsplit("/", 1)[1] in ("values.yaml", "Chart.yaml")
+        }
+        assert environments, (
+            f"{deploy_repo}: {branch} branch carries no environment folder "
+            "(ADR-025: one folder per environment the install declares, each a "
+            "values.yaml and a Chart.yaml pinning the published chart)"
+        )
+        incomplete = sorted(
+            env
+            for env in environments
+            if not {f"{env}/values.yaml", f"{env}/Chart.yaml"} <= paths
+        )
+        assert not incomplete, (
+            f"{deploy_repo}: {branch} branch has incomplete environment config for "
+            f"{incomplete} (ADR-025: each environment folder carries both a "
+            "values.yaml and a Chart.yaml pinning the published chart)"
         )
 
 
