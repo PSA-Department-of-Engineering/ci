@@ -61,8 +61,8 @@ INT-FOUNDRY-006:
 INT-FOUNDRY-007:
   version: 1.0.0
   status: active
-  statement: "Every deploy repo's README.md MUST document a Run with Docker path, a Develop without Docker path, and a Layout section."
-  rationale: "These sections are the contract so any repo can be deployed, developed, and navigated without tribal knowledge (ADR-018 Decision D)."
+  statement: "Every deploy repo's README.md MUST document a Run with Docker path, a Develop without Docker path, a Layout section, and a Commits section naming the platform's commit convention."
+  rationale: "These sections are the contract so any repo can be deployed, developed, navigated, and committed to without tribal knowledge (ADR-018 Decision D). The README is the first thing a committer reads, so it is where the commit convention is named and pointed at; the convention itself is documented once, on the platform portal."
   test:
     scope: integration
     component: RepoStandard

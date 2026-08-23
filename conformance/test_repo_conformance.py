@@ -117,12 +117,12 @@ def test_docs_is_deployable(repo_root: Path, deploy_repo: str) -> None:
 
 @intent("INT-FOUNDRY-007")
 def test_readme_documents_required_sections(repo_root: Path, deploy_repo: str) -> None:
-    """INT-FOUNDRY-007: README documents Run with Docker, Develop without Docker, and Layout."""
+    """INT-FOUNDRY-007: README documents Run with Docker, Develop without Docker, Layout, and Commits."""
     repo = _repo_dir(repo_root, deploy_repo)
     readme = repo / "README.md"
     assert readme.is_file(), f"{deploy_repo}: missing README.md"
     text = readme.read_text(encoding="utf-8").lower()
-    missing = [s for s in ("run with docker", "develop without docker", "layout") if s not in text]
+    missing = [s for s in ("run with docker", "develop without docker", "layout", "commit convention") if s not in text]
     assert not missing, f"{deploy_repo}: README.md missing required section(s): {missing}"
 
 
