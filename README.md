@@ -55,8 +55,7 @@ One-time repo settings the caller needs: **Settings → Actions → General → 
 
 ## Conventions
 
-- Conventional Commits drive every version: `fix:` → patch, `feat:` → minor, `feat!:` / `BREAKING CHANGE:` → major.
+- Both workflows enforce the platform's commit convention before releasing, via the shared `check-commit-hygiene` composite over every commit a push introduced; the convention itself (the admitted types, what each releases, the no-trailer rule) is documented once, on the platform portal's GitOps delivery page under "Commit convention". The `types` list in the composite is its source.
 - In a monorepo, scope the commit to the package (`fix(csd-intent): …`) so only that package's version moves.
-- Both workflows enforce two commit invariants before releasing, via the shared `check-commit-hygiene` composite: every newly-pushed commit must have a Conventional-Commits subject (a malformed type ships nothing, so it fails the run loudly), and none may carry a `Co-Authored-By:` / AI-attribution trailer.
 - Both workflows also run a **secrets gate** before releasing, via the shared `secrets-scan` composite: [gitleaks](https://github.com/gitleaks/gitleaks) scans the commits a push introduced and fails the run when one adds a credential, so a leaked secret is never tagged, published, or built into an image. It needs no per-repo config; a repo with a false positive drops a root `.gitleaks.toml` (`[extend] useDefault = true` plus an `allowlists` entry) to suppress it. The gitleaks version is pinned in the composite and moves for every workflow at once.
 - Pin callers to `@main`; these workflows are versioned by this repo's history.
