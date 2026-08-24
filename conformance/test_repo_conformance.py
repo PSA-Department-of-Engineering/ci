@@ -1220,9 +1220,12 @@ def test_released_set_reconciled_with_the_platform(
 ) -> None:
     """INT-FOUNDRY-061: what this repo releases matches the promotion record
     every declaring install carries for it. Growing the released set past the
-    record is an intended interim state exactly once: between this failure and
-    the reconcile_app that realigns the declaration - reconcile FIRST, then
-    merge the compose change, and this check is green on arrival. Not
+    record is an intended interim state exactly once: between the compose change
+    merging and the reconcile_app that realigns the declaration. That order is
+    forced, not chosen - the studio reads the released set off this repo's
+    default branch, so a reconcile that declares a component the merged compose
+    does not yet publish is refused as an alias watching nothing. Merge first,
+    reconcile second, and this check is green on the next run. Not
     onboarded anywhere holds vacuously (the first release must ship before
     onboarding can pin it); an unreadable platform record is a named skip."""
     repo = _repo_dir(repo_root, deploy_repo)
