@@ -44,7 +44,7 @@ on:
           an app repo has no access to this org's self-hosted scale set, so on a fork
           every job would sit in "waiting for a runner" forever and the repo would be
           readable but not buildable. Falling a fork back to a GitHub-hosted runner is
-          what makes an open-sourced app repo actually forkable (homelab-platform
+          what makes an open-sourced app repo actually forkable (foundry-platform
           ADR-037 governs OUR runs, which still go to ARC - a fork's runs are not ours).
           A fork PR opened against the canonical repo runs in the canonical repo's
           context, so it stays on ARC; only the forker's own pushes go GitHub-hosted.

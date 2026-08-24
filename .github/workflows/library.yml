@@ -31,7 +31,7 @@ on:
       runner:
         description: >-
           Runner to execute on. Defaults to the in-cluster ARC scale set
-          (homelab-platform ADR-037 - all CI on ARC runners, never GitHub-hosted). Every
+          (foundry-platform ADR-037 - all CI on ARC runners, never GitHub-hosted). Every
           job below reads it through `github.event.repository.fork && 'ubuntu-latest' ||
           inputs.runner`: a FORK has no access to this org's self-hosted scale set, so on
           a fork every job would wait for a runner forever. ADR-037 governs OUR runs; a

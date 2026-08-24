@@ -28,7 +28,7 @@ on:
 
 jobs:
     conformance-suite:
-        # ARC, never GitHub-hosted (homelab-platform ADR-037).
+        # ARC, never GitHub-hosted (foundry-platform ADR-037).
         runs-on: ${{ github.event.repository.fork && 'ubuntu-latest' || 'arc-dind' }}
         steps:
             - uses: actions/checkout@v4
