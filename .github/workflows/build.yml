@@ -89,7 +89,7 @@ on:
           (INT-FOUNDRY-061) reads it read-only; the fleet runs one platform repo,
           so the default is right for every app.
         type: string
-        default: rafaelgpires/homelab-platform
+        default: PSA-Department-of-Engineering/foundry-platform
     secrets:
       PLATFORM_READ_TOKEN:
         required: false

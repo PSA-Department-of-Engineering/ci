@@ -934,7 +934,7 @@ def test_app_oidc_gate_binds_the_apps_own_realm(repo_root: Path, deploy_repo: st
     # keycloak-http and keycloak-config-cli are INSTALL-SHARED, not app-scoped:
     # the platform's one Keycloak Service, and the importer image an app runs to
     # declare its OWN additional clients (the team-owned clients pattern - the
-    # platform's onboard-a-realm guide, rafaelgpires/homelab-platform#123). There
+    # platform's onboard-a-realm guide, PSA-Department-of-Engineering/foundry-platform#123). There
     # is exactly one of each per install and neither can express an app's name, so
     # allowing them cannot mask the borrow this check exists to catch: that is a
     # foreign keycloak-<otherapp> SECRET, which never reflects into this namespace
