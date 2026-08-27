@@ -2,6 +2,8 @@
 
 Shared, reusable GitHub Actions workflows for `PSA-Department-of-Engineering` repos. A repo calls one of these with a thin `.github/workflows/*.yml`, so the build and release logic lives here once and cannot drift across repos.
 
+This repo is the **GitHub Actions distribution of the platform's CI contract**, named in the platform book: `/capabilities/delivery/#the-ci-contract` on the docs portal (`docs/src/content/docs/capabilities/delivery.md` in `foundry-platform`). A second CI is authored against that contract, never generated from these files, and proven by the same question: does a repo on this CI publish the three artifacts and a tag.
+
 ## Workflows
 
 ### `build.yml`: deployable services
