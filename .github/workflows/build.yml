@@ -224,8 +224,12 @@ jobs:
     needs: [conformance, commit-hygiene, secrets-scan]
     runs-on: ${{ github.event.repository.fork && 'ubuntu-latest' || inputs.runner }}
     env:
-      # ghcr.io/<owner>; lowercased at point of use (owner may carry uppercase).
-      REG: ghcr.io/${{ github.repository_owner }}
+      # The registry is a value, not an assumption (the platform's #164): an
+      # organisation on another registry sets the org-level Actions variable
+      # FOUNDRY_REGISTRY (host/namespace, e.g. an ECR path) and authors the login
+      # step below for that registry's own credential mechanics; unset, GHCR under
+      # this owner. Lowercased at point of use (owner may carry uppercase).
+      REG: ${{ vars.FOUNDRY_REGISTRY || format('ghcr.io/{0}', github.repository_owner) }}
       # The docs image and the single-Dockerfile fallback are named for the app;
       # image-name overrides that for a repo whose GHCR base differs.
       APP: ${{ inputs.image-name || inputs.app-name }}
@@ -246,7 +250,10 @@ jobs:
         # `packages: write`. There is no PAT path: org secrets never reach
         # private repos on a free-plan org, so the old PAT-first expression
         # always resolved to this token anyway. A refused push is therefore
-        # always the same one fault, and the push helper names it.
+        # always the same one fault, and the push helper names it. This login is
+        # the GHCR implementation of the CI contract's publish clause: a registry
+        # named by FOUNDRY_REGISTRY brings its own login step in its own fork,
+        # because registry credentials are vendor-mechanical by nature.
         run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
       # SemVer from Conventional Commits. No npm publish: just the tag + GitHub release.
