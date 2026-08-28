@@ -143,10 +143,10 @@ INT-FOUNDRY-019:
 # --- deploy-branch delivery conformance (ADR-022, ADR-025) ---
 
 INT-FOUNDRY-020:
-  version: 1.0.0
+  version: 2.0.0
   status: active
-  statement: "Every deploy repo MUST have a deploy orphan branch on origin carrying per-environment config: dev/ and prod/, each a values.yaml and a Chart.yaml pinning a published chart version."
-  rationale: "ArgoCD watches the deploy branch per environment (ADR-022, ADR-025); promotion is a change to the chart version pinned there, kept separate from code on main. A registered, built app with no deploy branch is never delivered. Checked over git because the branch is orphan and not in the working tree, so it is a local maintainer pre-flight."
+  statement: "Every deploy repo MUST carry at least one deploy-<install> orphan branch on origin, and every such branch MUST carry environment config as one folder per environment, each folder a values.yaml and a Chart.yaml pinning a published chart version, with no environment folder half-written. Which environments a branch must carry is the install's own declaration (its foundry.yaml, in order), held to the branch by the platform's suite; this claim holds the shape the app's own origin can show."
+  rationale: "ArgoCD watches each install's deploy-<install> branch (ADR-022, ADR-032); an install declares its environments and the first is the entry environment (ADR-040), so the fixed dev/ and prod/ pair is nobody's contract. A registered, built app with no deploy branch is never delivered; a branch with no environment folder gives its reconciler nothing to deliver; a half-written folder deploys a chart with no values or values no chart pins. The declared-list bijection is deliberately not judged here: this suite runs in the app's repo and cannot read the install's declaration (the venue rule), so the platform's per-install delivery leg owns that direction. Checked over git because the branch is orphan and not in the working tree."
   test:
     scope: integration
     component: DeployRegistry

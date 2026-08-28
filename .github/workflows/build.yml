@@ -380,14 +380,10 @@ jobs:
             push_image "$REG/$APP:$VERSION"
           fi
 
-          # --- Docs site: base path /apps/<app> by default, "/" for the platform portal. ---
+          # --- Docs site: base path /apps/<app> by default, "/" for the platform portal.
+          # --- The portal's /apps/ index renders from the install manifest inside the
+          # --- platform chart (ADR-032), so no registry rides into the docs build. ---
           if [ -f docs/Dockerfile ]; then
-            # The docs Projects index is generated from deploy-repos.yaml at build
-            # time (ADR-023). That registry lives at the repo root, above the docs/
-            # build context, so land a copy inside docs/ for the in-image prebuild
-            # (docs/scripts/gen-projects.mjs) to read. Only the platform repo ships
-            # this registry; app repos have none and skip it.
-            if [ -f deploy-repos.yaml ]; then cp deploy-repos.yaml docs/deploy-repos.yaml; fi
             BASE="${DOCS_BASE:-/apps/$APP}"
             # No build secret: docs/Dockerfile's `npm ci` pulls
             # @psa-department-of-engineering/* from the public npm registry

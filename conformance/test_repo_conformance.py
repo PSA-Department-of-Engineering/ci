@@ -299,8 +299,8 @@ def test_has_app_owned_test_workflow(repo_root: Path, deploy_repo: str) -> None:
 
 @intent("INT-FOUNDRY-020")
 def test_has_deploy_branch(repo_root: Path, deploy_repo: str) -> None:
-    """INT-FOUNDRY-020: origin carries at least one deploy-<install> branch with
-    dev/ + prod/ env config (ADR-025/032).
+    """INT-FOUNDRY-020: origin carries at least one deploy-<install> branch whose
+    environment folders are each complete (ADR-025/032/040).
 
     Each install reconciles its own orphan `deploy-<install>` branch (ADR-032),
     so a repo that runs on N installs carries N deploy branches. Checked over
