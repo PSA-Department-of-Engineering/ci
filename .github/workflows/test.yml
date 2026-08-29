@@ -48,9 +48,11 @@ jobs:
                     "csd-intent~=0.4.0"
 
             # CSD-INTENT-01 schema, plus every active claim attested by a marker
-            # that names it (default --fail-on any).
+            # that names it (default --fail-on any). No --tests-dir: csd-intent 0.4.0
+            # resolves it against the project dir (conformance/), and the default scan
+            # of the project subtree is exactly the suite.
             - name: Audit conformance/intent.yaml (csd-intent)
-              run: csd-intent conformance --tests-dir conformance
+              run: csd-intent conformance
 
             # Import and collection smoke. The env vars are placeholders, nothing
             # here judges this repo as an app; pointing them at the checkout is
