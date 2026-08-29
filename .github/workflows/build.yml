@@ -143,15 +143,15 @@ jobs:
           python-version: "3.13"
 
       # csd-intent is the audit CLI (PyYAML installs with it); pytest-intent
-      # supplies the @intent decorator the suite imports. Git-tag installs from
-      # csd-library: the same pins the platform repo records in its pyproject.toml.
+      # supplies the @intent decorator the suite imports. PyPI installs (csd-library
+      # ADR-0004): the same constraints the platform repo records in its pyproject.toml.
       - if: ${{ inputs.app-contract }}
         name: Install csd-intent, pytest, and the intent runtime
         run: |
           python -m pip install --upgrade pip
           python -m pip install pytest pyyaml \
-            "pytest-intent @ git+https://github.com/PSA-Department-of-Engineering/csd-library.git@pytest-intent-v0.2.0#subdirectory=pytest-intent" \
-            "csd-intent @ git+https://github.com/PSA-Department-of-Engineering/csd-library.git@csd-intent-v0.3.0#subdirectory=csd-intent"
+            "csd-pytest-intent~=0.3.0" \
+            "csd-intent~=0.4.0"
 
       # Audit the app's own intent.yaml BEFORE the suite checkout below lands in
       # the tree: csd-intent scans the whole checkout for markers, and the
