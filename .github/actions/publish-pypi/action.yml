@@ -1,0 +1,59 @@
+# Build one Python package directory of a library monorepo and publish it to PyPI
+# via trusted publishing. The library workflow's Python counterpart to its inline npm
+# publish - but as a composite action, because the job that runs it CANNOT live in
+# library.yml: PyPI validates the OIDC token's job_workflow_ref claim, which for a
+# reusable workflow names the reusable file itself, never the caller's release.yml
+# that the PyPI publisher registration names (pypi/warehouse#11096). A composite
+# action leaves the claim untouched, so the logic still lives once, here, and each
+# calling repo carries only a thin matrix job over the workflow's paths_released
+# output.
+#
+# No stored credential, deliberately, mirroring the npm publish: each PyPI project
+# names the calling repo's release.yml as a trusted publisher, so pypi.org mints a
+# short-lived token from the run's OIDC token (the job needs id-token: write). The
+# publish also uploads PEP 740 provenance attestations from the same token, tying
+# the artifact back to the commit and workflow that built it. A project with no
+# trusted publisher configured fails here with invalid-publisher; configure the
+# publisher (or a pending publisher, for a first release) rather than introducing
+# an API token.
+#
+# Fed a non-Python directory (an npm package in the same paths_released fan-out),
+# it skips cleanly - the exact mirror of the npm job skipping Python directories.
+name: Publish to PyPI (trusted publishing)
+description: Build a monorepo subdirectory's sdist + wheel and publish them to PyPI with OIDC trusted publishing; skips directories without a pyproject.toml.
+
+inputs:
+  path:
+    description: Package directory to build and publish, relative to the repo root (must contain a pyproject.toml).
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@v4
+
+    - id: probe
+      shell: bash
+      run: |
+        if [ -f "${{ inputs.path }}/pyproject.toml" ]; then
+          echo "python=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "python=false" >> "$GITHUB_OUTPUT"
+          echo "${{ inputs.path }} has no pyproject.toml (npm package); the npm job publishes it, nothing to do here."
+        fi
+
+    - name: Build ${{ inputs.path }}
+      if: steps.probe.outputs.python == 'true'
+      working-directory: ${{ inputs.path }}
+      shell: bash
+      run: pipx run build --sdist --wheel
+
+    # skip-existing so a full re-run of a partially-failed fan-out (one package
+    # published, a sibling refused) does not die on the file that already landed.
+    - name: Publish ${{ inputs.path }} to PyPI
+      if: steps.probe.outputs.python == 'true'
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        packages-dir: ${{ inputs.path }}/dist
+        skip-existing: true
+        verbose: true

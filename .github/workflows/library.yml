@@ -5,8 +5,13 @@
 # .release-please-manifest.json, maintains a per-package "release PR" from
 # Conventional Commits, and on merge cuts the tag (<pkg>-vX.Y.Z), the GitHub release,
 # and the per-package CHANGELOG. Any released package that carries a package.json is
-# then published to the public npm registry; Python packages have no upload step
-# (consumers pip-install the git tag, per csd-library ADR-0001).
+# then published to the public npm registry. Python packages ship to PyPI (csd-library
+# ADR-0004), but their publish job CANNOT live here: PyPI trusted publishing validates
+# the OIDC token's job_workflow_ref claim, which for a reusable workflow points at THIS
+# file in THIS repo, never matching a publisher registered on the calling repo
+# (pypi/warehouse#11096). So the caller carries a thin publish-pypi job of its own,
+# wired to the paths_released output below and built on this repo's publish-pypi
+# composite action (composite actions do not change the claim).
 #
 # npm publishes go to registry.npmjs.org, not GitHub Packages: GitHub Packages requires
 # an auth token to READ even a public package, so a consumer repo cannot be forked and
@@ -39,6 +44,13 @@ on:
           the job).
         type: string
         default: arc-dind
+    outputs:
+      paths_released:
+        description: >-
+          JSON array of package directories release-please cut this run (empty or "[]"
+          when the push only opened or updated a release PR). The caller's publish-pypi
+          job fans out over it - see the header for why that job cannot live here.
+        value: ${{ jobs.release.outputs.paths_released }}
 
 permissions:
   contents: write        # tags + GitHub releases (release-please)
