@@ -45,7 +45,7 @@ jobs:
                   python -m pip install --upgrade pip
                   python -m pip install pytest pyyaml \
                     "csd-pytest-intent~=0.3.0" \
-                    "csd-intent~=0.4.0"
+                    "csd-intent~=0.4"
 
             # CSD-INTENT-01 schema, plus every active claim attested by a marker
             # that names it (default --fail-on any). No --tests-dir: csd-intent 0.4.0
