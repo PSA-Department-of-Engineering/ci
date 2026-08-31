@@ -264,9 +264,13 @@ def test_has_ci_caller(repo_root: Path, deploy_repo: str) -> None:
     repo = _repo_dir(repo_root, deploy_repo)
     caller = repo / ".github" / "workflows" / "build.yml"
     assert caller.is_file(), f"{deploy_repo}: missing .github/workflows/build.yml (the CI caller; ADR-019)"
-    assert "PSA-Department-of-Engineering/ci/.github/workflows/build.yml" in caller.read_text(encoding="utf-8"), (
+    ci_owners = [o for o in ("PSA-Department-of-Engineering", os.environ.get("GITHUB_REPOSITORY_OWNER", "")) if o]
+    caller_pattern = re.compile(
+        r"uses:\s+(" + "|".join(re.escape(o) for o in ci_owners) + r")/[^/\s]+/\.github/workflows/build\.yml@"
+    )
+    assert caller_pattern.search(caller.read_text(encoding="utf-8")), (
         f"{deploy_repo}: .github/workflows/build.yml must call the shared reusable workflow "
-        "(uses: PSA-Department-of-Engineering/ci/.github/workflows/build.yml@...), not a copied build (ADR-019)"
+        "(uses: <your organisation's ci repo>/.github/workflows/build.yml@...), not a copied build (ADR-019)"
     )
 
 
