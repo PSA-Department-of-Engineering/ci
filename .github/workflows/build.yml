@@ -101,13 +101,14 @@ on:
       PACKAGES_READ_TOKEN:
         required: false
         description: >-
-          A GitHub PAT for pushing images to an org GHCR namespace (needs
-          write:packages) when the org caps the Actions token to read. Falls back to
-          GITHUB_TOKEN when unset, which suffices for a personal-namespace push. This
-          is an IMAGE-registry credential only: it once also covered installing
-          @psa-department-of-engineering/* npm packages during the docs build, but
-          those are on the public npm registry now (csd-library ADR-0003) and need no
-          credential at all.
+          A GitHub PAT the reconcile check (INT-FOUNDRY-061) falls back to for
+          reading the platform repository's deploy branches when
+          PLATFORM_READ_TOKEN is unset: contents read on the platform repo, and
+          nothing else. It pushes no image: the GHCR login rides the workflow
+          token alone (the login step below; there is no PAT path). The name is
+          historical: it once installed @psa-department-of-engineering/* npm
+          packages during the docs build, which are on the public npm registry
+          now (csd-library ADR-0003) and need no credential at all.
 
 # No top-level permissions block, deliberately: a called workflow may request
 # only a SUBSET of what its caller grants, so declaring permissions here makes
@@ -290,14 +291,28 @@ jobs:
 
       - name: Release
         id: release
-        uses: cycjimmy/semantic-release-action@v4
-        with:
-          # The preset above is a package of its own; the action installs it beside
-          # semantic-release (v24 pairs with conventional-changelog-conventionalcommits v8).
-          extra_plugins: |
-            conventional-changelog-conventionalcommits@8
         env:
           GITHUB_TOKEN: ${{ github.token }}
+        # The engine runs directly under npx: an enterprise Actions allowlist
+        # admits actions from enterprise-owned repos, GitHub, or an explicit
+        # pattern list, so a third-party release action is a host-policy
+        # binding this workflow does not carry. npx -p keeps both packages in
+        # its own prefix, off the workspace tree that image builds COPY. The
+        # preset is a package of its own (semantic-release v24 pairs with
+        # conventional-changelog-conventionalcommits v8). A new tag on the
+        # checkout after the run is the release; its name carries the version.
+        run: |
+          set -euo pipefail
+          git tag --list > /tmp/tags-before
+          npx -y -p semantic-release@24 -p conventional-changelog-conventionalcommits@8 semantic-release
+          git tag --list > /tmp/tags-after
+          NEW_TAG=$(comm -13 <(sort /tmp/tags-before) <(sort /tmp/tags-after) | head -1)
+          if [ -n "$NEW_TAG" ]; then
+            echo "new_release_published=true" >> "$GITHUB_OUTPUT"
+            echo "new_release_version=${NEW_TAG#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "new_release_published=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Build and push image(s), chart, docs
         if: steps.release.outputs.new_release_published == 'true'
