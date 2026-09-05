@@ -101,13 +101,14 @@ on:
       PACKAGES_READ_TOKEN:
         required: false
         description: >-
-          A GitHub PAT for pushing images to an org GHCR namespace (needs
-          write:packages) when the org caps the Actions token to read. Falls back to
-          GITHUB_TOKEN when unset, which suffices for a personal-namespace push. This
-          is an IMAGE-registry credential only: it once also covered installing
-          @psa-department-of-engineering/* npm packages during the docs build, but
-          those are on the public npm registry now (csd-library ADR-0003) and need no
-          credential at all.
+          A GitHub PAT the reconcile check (INT-FOUNDRY-061) falls back to for
+          reading the platform repository's deploy branches when
+          PLATFORM_READ_TOKEN is unset: contents read on the platform repo, and
+          nothing else. It pushes no image: the GHCR login rides the workflow
+          token alone (the login step below; there is no PAT path). The name is
+          historical: it once installed @psa-department-of-engineering/* npm
+          packages during the docs build, which are on the public npm registry
+          now (csd-library ADR-0003) and need no credential at all.
 
 # No top-level permissions block, deliberately: a called workflow may request
 # only a SUBSET of what its caller grants, so declaring permissions here makes
