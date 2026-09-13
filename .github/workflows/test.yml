@@ -54,6 +54,9 @@ jobs:
             - name: Audit conformance/intent.yaml (csd-intent)
               run: csd-intent conformance
 
+            - name: Test release tag selection
+              run: pytest tests -q
+
             # Import and collection smoke. The env vars are placeholders, nothing
             # here judges this repo as an app; pointing them at the checkout is
             # only what lets conftest's fixtures resolve so collection can run.
