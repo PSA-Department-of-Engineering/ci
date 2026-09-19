@@ -1,0 +1,49 @@
+# The per-app conformance suite, as an action: this directory IS the action, so the
+# suite that runs is the one that lives beside this file, at the ref the caller names.
+#
+# build.yml used to check this repository out a second time, by name, into the app's
+# workspace (.ci-suite) to get at these files. That works only while this repository
+# is public: a job's token reads the repository that runs it and no other, so a
+# private copy of this repository could not be checked out, and an organization
+# running one had to read the suite from somewhere else. An action needs no token of
+# the caller's: the runner fetches it under the same access rule that already lets
+# the caller use this repository's workflows and its two other actions. It also keeps
+# the suite out of the app's tree, so the app's own pytest/intent configuration never
+# sees it, and the suite never enters the app's intent audit.
+#
+# The caller installs pytest and the intent runtime first (build.yml does, in the step
+# it shares with the csd-intent audit). Secrets do not reach a composite action on
+# their own: the platform read token arrives as an input.
+name: Per-app conformance suite
+description: Judge one app checkout against the chart-side INT-FOUNDRY claims (REF-Foundry section 4).
+
+inputs:
+  app-name:
+    description: The app's platform name (the suite judges the checkout as this app).
+    required: true
+  app-dir:
+    description: The app checkout to judge.
+    required: false
+    default: ${{ github.workspace }}
+  platform-repo:
+    description: The platform repository (owner/name) the reconcile check (INT-FOUNDRY-061) reads.
+    required: false
+    default: ""
+  platform-read-token:
+    description: >-
+      Read-only token for the platform repository, arming the reconcile check.
+      Empty, the check reports a named skip: the drift brake is off, never silently green.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        CONFORMANCE_APP_DIR: ${{ inputs.app-dir }}
+        CONFORMANCE_APP_NAME: ${{ inputs.app-name }}
+        PLATFORM_REPO: ${{ inputs.platform-repo }}
+        PLATFORM_READ_TOKEN: ${{ inputs.platform-read-token }}
+      # No cache directory: the action's folder belongs to the runner, not to the job.
+      run: pytest "$GITHUB_ACTION_PATH" -q -p no:cacheprovider
