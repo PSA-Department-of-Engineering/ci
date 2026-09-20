@@ -8,7 +8,7 @@ This repo is the **GitHub Actions distribution of the platform's CI contract**, 
 
 ### `build.yml`: deployable services
 
-For a repo that ships a deployable artifact (app image(s), Helm chart, docs site). On push to `main`, semantic-release cuts a single repo-wide SemVer `vX.Y.Z` from Conventional Commits automatically (no PR: promotion is the real gate, per the homelab platform's ADR-024), then builds and pushes whatever the repo ships to GHCR. Each step skips when its input is absent, so a docs-only repo and a full app share one workflow.
+For a repo that ships a deployable artifact (app image(s), Helm chart, docs site). On push to `main`, semantic-release cuts a single repo-wide SemVer `vX.Y.Z` from Conventional Commits automatically (no PR: promotion is the real gate, per the platform's ADR-024), then builds and pushes whatever the repo ships to GHCR. Each step skips when its input is absent, so a docs-only repo and a full app share one workflow.
 
 Before the release runs, a `conformance` job audits the repo against the REF-Foundry section 4 app contract (`devops/`, `k8s/`, a `docs/` site that honors `DOCS_BASE`, the README sections, `.env.example`, `intent.yaml`) and runs `csd-intent` on its `intent.yaml`. The release `needs` it, so a non-conformant app is never tagged or published: this is where the platform's per-app repo-contract tests run, in the app's own CI where its files are checked out. The docs-only platform portal is not an onboardable app and opts out with `app-contract: false`.
 

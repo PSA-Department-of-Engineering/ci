@@ -1,4 +1,4 @@
-# Reusable build + release for homelab repos (ADR-019, ADR-024).
+# Reusable build + release for Foundry repos (ADR-019, ADR-024).
 #
 # A thin per-repo caller invokes this. It runs on the in-cluster ARC dind runners,
 # derives a SemVer from Conventional Commits with semantic-release (tag + GitHub
