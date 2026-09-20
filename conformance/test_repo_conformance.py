@@ -264,9 +264,12 @@ def test_has_ci_caller(repo_root: Path, deploy_repo: str) -> None:
     repo = _repo_dir(repo_root, deploy_repo)
     caller = repo / ".github" / "workflows" / "build.yml"
     assert caller.is_file(), f"{deploy_repo}: missing .github/workflows/build.yml (the CI caller; ADR-019)"
-    ci_owners = [o for o in ("PSA-Department-of-Engineering", os.environ.get("GITHUB_REPOSITORY_OWNER", "")) if o]
+    # The shared workflow is the one in the repo's OWN organisation: every organisation that runs the
+    # Foundry carries its own ci repo. Off Actions there is no owner to compare with, so any owner passes.
+    owner = os.environ.get("GITHUB_REPOSITORY_OWNER", "")
     caller_pattern = re.compile(
-        r"uses:\s+(" + "|".join(re.escape(o) for o in ci_owners) + r")/[^/\s]+/\.github/workflows/build\.yml@"
+        r"uses:\s+" + (re.escape(owner) if owner else r"[^/\s]+") + r"/[^/\s]+/\.github/workflows/build\.yml@",
+        re.IGNORECASE,  # GitHub resolves an owner whatever its case
     )
     assert caller_pattern.search(caller.read_text(encoding="utf-8")), (
         f"{deploy_repo}: .github/workflows/build.yml must call the shared reusable workflow "
@@ -938,7 +941,7 @@ def test_app_oidc_gate_binds_the_apps_own_realm(repo_root: Path, deploy_repo: st
     # keycloak-http and keycloak-config-cli are INSTALL-SHARED, not app-scoped:
     # the platform's one Keycloak Service, and the importer image an app runs to
     # declare its OWN additional clients (the team-owned clients pattern - the
-    # platform's onboard-a-realm guide, PSA-Department-of-Engineering/foundry-platform#123). There
+    # platform's onboard-a-realm guide). There
     # is exactly one of each per install and neither can express an app's name, so
     # allowing them cannot mask the borrow this check exists to catch: that is a
     # foreign keycloak-<otherapp> SECRET, which never reflects into this namespace
