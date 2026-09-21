@@ -1079,6 +1079,16 @@ def test_platform_minted_credentials_are_not_optional(
     )
 
 
+def _runs_oidc_gate(values: dict, templates: dict[str, str]) -> bool:
+    """Whether the chart runs an OIDC gate: `auth.oidc.enabled` for a chart that
+    carries that switch, otherwise an oauth2-proxy (its --oidc-issuer-url) in any
+    template, which is how a chart whose gate is unconditional declares it."""
+    oidc = (values.get("auth") or {}).get("oidc") or {}
+    if "enabled" in oidc:
+        return bool(oidc["enabled"])
+    return any("--oidc-issuer-url" in text for text in templates.values())
+
+
 @intent("INT-FOUNDRY-037")
 def test_mcp_app_keeps_basic_on_machine_door(repo_root: Path, deploy_repo: str) -> None:
     """INT-FOUNDRY-037: an OIDC app whose oauth2-proxy skips a machine path (/mcp)
@@ -1094,7 +1104,7 @@ def test_mcp_app_keeps_basic_on_machine_door(repo_root: Path, deploy_repo: str) 
     repo = _repo_dir(repo_root, deploy_repo)
     templates = _template_texts(repo)
     values = _values(repo)
-    if not ((values.get("auth") or {}).get("oidc") or {}).get("enabled"):
+    if not _runs_oidc_gate(values, templates):
         pytest.skip(f"{deploy_repo}: OIDC gate not enabled (vacuous)")
 
     proxy_templates = {n: t for n, t in templates.items() if "skip-auth-route" in t}
