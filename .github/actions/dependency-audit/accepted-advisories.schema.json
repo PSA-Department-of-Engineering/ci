@@ -1,0 +1,38 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://github.com/PSA-Department-of-Engineering/ci/.github/actions/dependency-audit/accepted-advisories.schema.json",
+    "title": "Accepted advisories",
+    "description": "The advisories a repository accepts in the dependency audit: each one has no fix the repository can take, and does not affect the repository. Each entry carries the fields of a VEX not_affected statement, in VEX's names and justification values; its status, not_affected, is implied by its place in this file. The file is accepted-advisories.yaml at the repository root; absent, nothing is accepted.",
+    "type": "array",
+    "items": { "$ref": "#/$defs/entry" },
+    "$defs": {
+        "entry": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["vulnerability", "justification", "impact_statement"],
+            "properties": {
+                "vulnerability": {
+                    "description": "The advisory's id as the audit reports it: a GHSA id, or the PYSEC or CVE id pip-audit names.",
+                    "type": "string",
+                    "pattern": "^(GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}|PYSEC-[0-9]{4}-[0-9]+|CVE-[0-9]{4}-[0-9]{4,})$"
+                },
+                "justification": {
+                    "description": "VEX's justification for not_affected.",
+                    "type": "string",
+                    "enum": [
+                        "component_not_present",
+                        "vulnerable_code_not_present",
+                        "vulnerable_code_not_in_execute_path",
+                        "vulnerable_code_cannot_be_controlled_by_adversary",
+                        "inline_mitigations_already_exist"
+                    ]
+                },
+                "impact_statement": {
+                    "description": "Why the repository is not affected: where the package is used, and what keeps the vulnerability from affecting it there.",
+                    "type": "string",
+                    "minLength": 1
+                }
+            }
+        }
+    }
+}

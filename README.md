@@ -60,4 +60,13 @@ One-time repo settings the caller needs: **Settings → Actions → General → 
 - Both workflows enforce the platform's commit convention before releasing, via the shared `check-commit-hygiene` composite over every commit a push introduced; the convention itself (the admitted types, what each releases, the no-trailer rule) is documented once, on the platform portal's GitOps delivery page under "Commit convention". The `types` list in the composite is its source.
 - In a monorepo, scope the commit to the package (`fix(csd-intent): …`) so only that package's version moves.
 - Both workflows also run a **secrets gate** before releasing, via the shared `secrets-scan` composite: [gitleaks](https://github.com/gitleaks/gitleaks) scans the commits a push introduced and fails the run when one adds a credential, so a leaked secret is never tagged, published, or built into an image. It needs no per-repo config; a repo with a false positive drops a root `.gitleaks.toml` (`[extend] useDefault = true` plus an `allowlists` entry) to suppress it. The gitleaks version is pinned in the composite and moves for every workflow at once.
+- `build.yml` also runs a **dependency audit**, via the shared `dependency-audit` composite: `npm audit --omit=dev` (high and critical advisories) over every tracked `package-lock.json`, and pip-audit (every advisory) over every `pyproject.toml` with a `[project]` table and every `requirements.txt`, outside `docs/` and test harnesses. It reports in the job summary and does not fail the build. A repo accepts an advisory it cannot fix and is not affected by with an entry in a root `accepted-advisories.yaml`:
+
+  ```yaml
+  - vulnerability: GHSA-xxxx-xxxx-xxxx
+    justification: vulnerable_code_not_in_execute_path
+    impact_statement: Used only by the build-time image cache; the site builds static.
+  ```
+
+  Each entry carries the fields of a VEX not_affected statement, in VEX's names and justification values; its status, not_affected, is implied. `accepted-advisories.schema.json` beside the composite defines the file, and every run checks it.
 - Pin callers to `@main`; these workflows are versioned by this repo's history.
