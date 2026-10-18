@@ -46,11 +46,11 @@ jobs:
                   python -m pip install --upgrade pip
                   python -m pip install pytest pyyaml \
                     "csd-pytest-intent~=0.3.0" \
-                    "csd-intent~=0.4" \
+                    "csd-intent~=1.0" \
                     "jsonschema>=4.18,<5"
 
             # CSD-INTENT-01 schema, plus every active claim attested by a marker
-            # that names it (default --fail-on any). No --tests-dir: csd-intent 0.4.0
+            # that names it (default --fail-on any). No --tests-dir: csd-intent
             # resolves it against the project dir (conformance/), and the default scan
             # of the project subtree is exactly the suite.
             - name: Audit conformance/intent.yaml (csd-intent)
