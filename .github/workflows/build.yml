@@ -209,25 +209,22 @@ jobs:
   # The org's dependency gate: every npm and Python bundle the repo ships, audited for
   # known advisories, with the ones a repo accepts recorded in its root
   # accepted-advisories.yaml (the composite says what counts). It applies to every repo:
-  # one with no bundles outside docs/ has nothing to audit and passes. Report-only
-  # (#20): failures land in the job summary, the job succeeds, and release does not
-  # need it; #21 makes it a gate.
+  # one with no bundles outside docs/ has nothing to audit and passes. release `needs`
+  # it, so a repo carrying an unaccepted advisory is never tagged or published.
   dependency-audit:
     runs-on: ${{ github.event.repository.fork && 'ubuntu-latest' || inputs.runner }}
     permissions:
       contents: read
     steps:
-      # A setup or install step that errors must not fail the caller's build either,
-      # while the audit reports only.
       - uses: PSA-Department-of-Engineering/ci/.github/actions/dependency-audit@main
-        continue-on-error: true
 
   # Never releases from a pull request: a PR head is a candidate, not a version. The
-  # three gates above and the dependency audit are safe to run on one (both commit
-  # gates already resolve a pull_request's range against its base), so a caller that
-  # wires `pull_request:` gets conformance, hygiene, the secrets scan and the audit
-  # as PR checks while tag, GitHub release, and every GHCR push stay on the
-  # push-to-main path (ADR-019, ADR-024).
+  # four gates above are safe to run on one (both commit gates already resolve a
+  # pull_request's range against its base), so a caller that wires `pull_request:`
+  # gets conformance, hygiene, the secrets scan and the audit as PR checks while
+  # tag, GitHub release, and every GHCR push stay on the push-to-main path
+  # (ADR-019, ADR-024). The audit can report red on such a PR, so it blocks a merge
+  # there as well as a release.
   # Skipping here rather than in each caller keeps the release rule in its one home.
   #
   # A no-op for the fleet as it stands: every caller triggers on push alone, and a
@@ -235,7 +232,7 @@ jobs:
   # one-shot merge gate folds into green rather than unknown.
   release:
     if: github.event_name != 'pull_request'
-    needs: [conformance, commit-hygiene, secrets-scan]
+    needs: [conformance, commit-hygiene, secrets-scan, dependency-audit]
     runs-on: ${{ github.event.repository.fork && 'ubuntu-latest' || inputs.runner }}
     env:
       # The registry is a value, not an assumption (the platform's #164): an
