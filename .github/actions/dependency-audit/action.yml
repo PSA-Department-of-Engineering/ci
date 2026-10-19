@@ -8,9 +8,15 @@
 # accepted-advisories.schema.json beside this file and validated on every run. With
 # none, nothing is accepted.
 #
-# Report-only (#20): every failure is printed and written to the job summary, and the
-# step succeeds; the calling job also continues past a step that errors. #21 makes it
-# fail the build.
+# Blocking: a finding no accepted-advisories.yaml entry accepts fails the step, and
+# build.yml's release `needs` the job, so the repo is neither tagged nor pushed.
+# Every failure is printed and written to the job summary, so the reason is on the
+# run that refused it.
+#
+# It fails CLOSED: a bundle the audit cannot read, and a setup or install step that
+# errors, refuse the release too (audit.py reports them as `error` failures, distinct
+# from `unaccepted` ones). A bundle whose state is unknown is not a bundle known to be
+# clean, and a gate that waves through its own breakage gates nothing.
 name: Dependency audit
 description: Audit every npm and Python bundle the repo ships; a repo-level accepted-advisories.yaml records the advisories it accepts.
 
@@ -32,4 +38,4 @@ runs:
       run: python -m pip install --quiet "pip-audit>=2.10,<3" "jsonschema>=4.18,<5" pyyaml
 
     - shell: bash
-      run: python "$GITHUB_ACTION_PATH/audit.py" --report-only
+      run: python "$GITHUB_ACTION_PATH/audit.py"
