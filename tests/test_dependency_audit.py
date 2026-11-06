@@ -196,6 +196,38 @@ def test_the_audits_run_on_production_dependencies(tmp_path, monkeypatch):
     assert requirements[-2:] == ['-r', 'svc/requirements.txt']
 
 
+def fake_npm(monkeypatch, *answers):
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append(args)
+        return audit.subprocess.CompletedProcess(args, 1, stdout=answers[len(calls) - 1], stderr='')
+
+    monkeypatch.setattr(audit.subprocess, 'run', fake_run)
+    return calls
+
+
+def test_an_empty_npm_error_is_asked_again_once(tmp_path, monkeypatch):
+    calls = fake_npm(monkeypatch, '{"error": {"summary": "", "detail": ""}}', '{"vulnerabilities": {}}')
+    report = audit.run_npm_audit(tmp_path, audit.Bundle('npm', 'web', 'web/package-lock.json'))
+    assert report == {'vulnerabilities': {}} and len(calls) == 2
+
+
+def test_an_empty_npm_error_that_repeats_is_still_an_error(tmp_path, monkeypatch):
+    empty = '{"error": {"summary": "", "detail": ""}}'
+    calls = fake_npm(monkeypatch, empty, empty)
+    bundle = audit.Bundle('npm', 'web', 'web/package-lock.json')
+    with pytest.raises(audit.AuditError):
+        audit.npm_findings(bundle, audit.run_npm_audit(tmp_path, bundle))
+    assert len(calls) == 2
+
+
+def test_an_npm_error_that_says_something_is_not_asked_again(tmp_path, monkeypatch):
+    calls = fake_npm(monkeypatch, '{"error": {"summary": "ENOLOCK", "detail": "no lockfile"}}')
+    audit.run_npm_audit(tmp_path, audit.Bundle('npm', 'web', 'web/package-lock.json'))
+    assert len(calls) == 1
+
+
 def test_report_only_exits_zero_and_a_gate_exits_one(capsys):
     failures = [audit.Failure('unaccepted', 'npm .: GHSA-aaaa-bbbb-0003 in cache-lib')]
     assert audit.report([], failures, report_only=True) == 0

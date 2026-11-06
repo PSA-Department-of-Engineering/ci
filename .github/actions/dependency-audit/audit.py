@@ -116,17 +116,24 @@ def discover(root: Path, tracked: list[str]) -> list[Bundle]:
 
 
 def run_npm_audit(root: Path, bundle: Bundle) -> dict:
+    """npm's advisory service now and then answers an error with no summary and no detail;
+    that answer is asked again once before it counts, and counts as an error if it repeats."""
     npm = shutil.which("npm") or "npm"
-    proc = subprocess.run(
-        [npm, "audit", "--omit=dev", "--json"],
-        cwd=root / bundle.directory,
-        capture_output=True,
-        text=True,
-    )
-    try:
-        return json.loads(proc.stdout)
-    except json.JSONDecodeError:
-        raise AuditError(f"npm audit printed no report (exit {proc.returncode}): {_one_line(proc.stderr)[-400:]}")
+    for attempt in (1, 2):
+        proc = subprocess.run(
+            [npm, "audit", "--omit=dev", "--json"],
+            cwd=root / bundle.directory,
+            capture_output=True,
+            text=True,
+        )
+        try:
+            report = json.loads(proc.stdout)
+        except json.JSONDecodeError:
+            raise AuditError(f"npm audit printed no report (exit {proc.returncode}): {_one_line(proc.stderr)[-400:]}")
+        error = report.get("error") if isinstance(report, dict) else None
+        if attempt == 2 or not (isinstance(error, dict) and not error.get("summary") and not error.get("detail")):
+            return report
+    return report
 
 
 def npm_findings(bundle: Bundle, report: dict) -> list[Finding]:
