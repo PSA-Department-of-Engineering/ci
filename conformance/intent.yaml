@@ -312,6 +312,17 @@ INT-FOUNDRY-057:
     type: invariant
   criticality: high
 
+INT-FOUNDRY-082:
+  version: 1.0.0
+  status: active
+  statement: "An app chart's oauth2-proxy sidecar that runs with --reverse-proxy and skips any route (--skip-auth-route or --skip-auth-regex) MUST run oauth2-proxy 7.15.2 or later and MUST pass --trusted-proxy-ip; a templated list MUST be refused by the chart when unset (a `fail` or `required` naming trustedProxyIPs), and neither the chart's arguments nor its defaults may trust every address (0.0.0.0/0, ::/0)."
+  rationale: "With --reverse-proxy and a skip rule, oauth2-proxy before 7.15.2 matched the rule against a client-supplied X-Forwarded-Uri, so a request naming a skipped path reached a protected one without a session (GHSA-7x63-xv5r-3p2x, CVE-2026-40575, critical). 7.15.2 reads that header only from a peer in --trusted-proxy-ip, and with the flag unset it still trusts every peer, so the upgrade alone fixes nothing. The trusted range is the install's (the pod network its edge proxy takes addresses from), so the chart cannot carry it: the deploy branch sets it beside host and issuer, and a chart that rendered without it would silently trust everyone. Every fleet chart in this shape ran 7.7.1 or ran 7.15.5 without the flag; the check turns either into a release failure. It reads argument lines, so a comment cannot satisfy it, and holds vacuously for a proxy that skips nothing or reads no forwarded headers."
+  test:
+    scope: integration
+    component: DeployRepoChart
+    type: invariant
+  criticality: critical
+
 INT-FOUNDRY-061:
   version: 1.0.0
   status: active

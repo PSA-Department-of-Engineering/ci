@@ -1,7 +1,7 @@
 """Per-app conformance: the REF-Foundry section 4 app-repo contract (ADR-018).
 
 The single home of the chart-side app-contract claims (002..010, 013, 018..020,
-022..023, 029..030, 034, 037, 039, 045..048, 056..057, 060), run by the shared
+022..023, 029..030, 034, 037, 039, 045..048, 056..057, 060, 082), run by the shared
 build workflow in each app's own CI, where the app is checked out; `release`
 needs it, so a non-conformant repo is never tagged or published. conftest.py
 resolves the one judged app from CONFORMANCE_APP_DIR/CONFORMANCE_APP_NAME. The
@@ -895,6 +895,123 @@ def test_oauth2_proxy_provider_and_api_route_flag(
     assert not offenders, (
         f"{deploy_repo}: oauth2-proxy misconfiguration that fails only at login: "
         f"{offenders}"
+    )
+
+
+# The first oauth2-proxy release that reads --trusted-proxy-ip (GHSA-7x63-xv5r-3p2x).
+_PROXY_TRUST_FIXED = (7, 15, 2)
+# Trust-all, the proxy's own default when --trusted-proxy-ip is unset.
+_TRUST_ALL = ("0.0.0.0/0", "::/0")
+
+
+def _proxy_image_tags(values: dict, templates: dict[str, str]) -> list[tuple[str, str]]:
+    """Every oauth2-proxy image tag the chart names, as (where, tag): a full image
+    reference in values or in a template, or a values repository+tag pair."""
+    found: list[tuple[str, str]] = []
+
+    def walk(node: object, trail: tuple[str, ...]) -> None:
+        if isinstance(node, dict):
+            repository = node.get("repository")
+            if isinstance(repository, str) and repository.rstrip("/").endswith("oauth2-proxy"):
+                found.append((".".join((*trail, "tag")), str(node.get("tag", ""))))
+            for key, child in node.items():
+                walk(child, (*trail, str(key)))
+        elif isinstance(node, list):
+            for i, child in enumerate(node):
+                walk(child, (*trail, str(i)))
+        elif isinstance(node, str):
+            for match in re.finditer(r"oauth2-proxy/oauth2-proxy:([^\s\"'}]+)", node):
+                found.append((".".join(trail), match.group(1)))
+
+    walk(values, ())
+    for name, text in templates.items():
+        for match in re.finditer(r"oauth2-proxy/oauth2-proxy:([^\s\"'}]+)", text):
+            found.append((name, match.group(1)))
+    return found
+
+
+def _release(tag: str) -> tuple[int, int, int] | None:
+    """A vX.Y.Z tag as a comparable triple, or None for anything else."""
+    match = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)", tag.strip())
+    if not match:
+        return None
+    major, minor, patch = (int(part) for part in match.groups())
+    return major, minor, patch
+
+
+def _proxy_trust_offenders(values: dict, templates: dict[str, str]) -> list[str] | None:
+    """What keeps the chart's proxy from trusting the edge alone (INT-FOUNDRY-082),
+    or None when no template both reads forwarded headers and skips a route."""
+    engaged = {
+        name: text
+        for name, text in templates.items()
+        if re.search(r"^\s*-\s*--reverse-proxy(=true)?\s*$", text, re.MULTILINE)
+        and re.search(r"^\s*-\s*--skip-auth-(route|regex)", text, re.MULTILINE)
+    }
+    if not engaged:
+        return None
+
+    offenders: list[str] = []
+    for name, text in engaged.items():
+        args = re.findall(r"^\s*-\s*--trusted-proxy-ip=(.*)$", text, re.MULTILINE)
+        if not args:
+            offenders.append(f"{name}: --reverse-proxy with a skip route but no --trusted-proxy-ip")
+            continue
+        if any(cidr in arg for arg in args for cidr in _TRUST_ALL):
+            offenders.append(f"{name}: --trusted-proxy-ip trusts every address")
+        guarded = re.search(
+            r"\b(fail|required)\b[^\n]*trustedProxyIPs|trustedProxyIPs[^\n]*\b(fail|required)\b",
+            text,
+        )
+        if any("{{" in arg for arg in args) and not guarded:
+            offenders.append(
+                f"{name}: --trusted-proxy-ip is templated but nothing refuses an unset list "
+                "(add a `fail` naming trustedProxyIPs, or the proxy trusts every address)"
+            )
+
+    for key, value in _flat_items(values):
+        if "trustedProxyIPs" in key and isinstance(value, str) and value.strip() in _TRUST_ALL:
+            offenders.append(f"values.yaml: {key}={value} trusts every address")
+
+    tags = _proxy_image_tags(values, templates)
+    if not tags:
+        offenders.append("no oauth2-proxy image tag to judge (name the image with a release tag)")
+    for where, tag in tags:
+        release = _release(tag)
+        if release is None:
+            offenders.append(f"{where}: oauth2-proxy tag {tag!r} is not a release version")
+        elif release < _PROXY_TRUST_FIXED:
+            offenders.append(
+                f"{where}: oauth2-proxy {tag} predates 7.15.2, which first reads --trusted-proxy-ip"
+            )
+    return offenders
+
+
+@intent("INT-FOUNDRY-082")
+def test_oauth2_proxy_trusts_forwarded_headers_from_the_edge_only(
+    repo_root: Path, deploy_repo: str
+) -> None:
+    """INT-FOUNDRY-082: a proxy that reads forwarded headers and skips routes names
+    the proxies it trusts, and runs a release that honours the list.
+
+    With --reverse-proxy and any --skip-auth-route/--skip-auth-regex, oauth2-proxy
+    before 7.15.2 matches its skip rules against a client-supplied X-Forwarded-Uri,
+    so a request that names a skipped path reaches a protected one without a
+    session (GHSA-7x63-xv5r-3p2x, CVE-2026-40575). 7.15.2 reads that header only
+    from a peer in --trusted-proxy-ip, and with the flag unset it still trusts
+    every peer. So the sidecar must run 7.15.2 or later AND pass the flag, from a
+    value the install sets: the chart refuses to render without it (a `fail` or
+    `required` naming trustedProxyIPs), and nothing in the chart trusts every
+    address. Vacuous for a chart whose proxy skips no route or reads no
+    forwarded headers.
+    """
+    repo = _repo_dir(repo_root, deploy_repo)
+    offenders = _proxy_trust_offenders(_values(repo), _template_texts(repo))
+    if offenders is None:
+        pytest.skip(f"{deploy_repo}: no proxy both reads forwarded headers and skips a route (vacuous)")
+    assert not offenders, (
+        f"{deploy_repo}: the proxy would match its skip routes against a forwarded URI "
+        f"anyone can send (GHSA-7x63-xv5r-3p2x): {offenders}"
     )
 
 

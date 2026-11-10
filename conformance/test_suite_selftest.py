@@ -16,7 +16,12 @@ conformance.
 
 from __future__ import annotations
 
-from test_repo_conformance import _generated_trees, _is_docs_component, _sans_comments
+from test_repo_conformance import (
+    _generated_trees,
+    _is_docs_component,
+    _proxy_trust_offenders,
+    _sans_comments,
+)
 
 # The exact failure shape of 2026-08-01 (wttg3-helper run 30684103353): a
 # non-docs Service whose comment mentions the derived "<chart>-docs" pattern.
@@ -109,3 +114,75 @@ def test_the_apps_own_python_is_still_demanded(tmp_path) -> None:
     (tmp_path / "tests").mkdir()
     (tmp_path / "tests" / "test_thing.py").write_text("x = 1\n", encoding="utf-8")
     assert "__pycache__/" in {pattern for _, pattern in _generated_trees(tmp_path)}
+
+
+# INT-FOUNDRY-082 (GHSA-7x63-xv5r-3p2x): the proxy-trust reader, against the
+# fleet's own sidecar shapes. A chart engages only when one template both reads
+# forwarded headers and skips a route; then the flag, its guard and the release
+# all have to hold.
+_SKIPPING_PROXY = """\
+kind: Deployment
+spec:
+  template:
+    spec:
+      containers:
+        - name: oauth2-proxy
+          image: "{{ .Values.auth.proxyImage }}"
+          args:
+            - --reverse-proxy=true
+            - --skip-auth-route=^/mcp(/|$)
+"""
+
+_GUARDED_TRUST = """\
+            {{- if not .Values.auth.oidc.trustedProxyIPs }}
+            {{- fail "set auth.oidc.trustedProxyIPs" }}
+            {{- end }}
+            {{- range .Values.auth.oidc.trustedProxyIPs }}
+            - --trusted-proxy-ip={{ . }}
+            {{- end }}
+"""
+
+
+def _trust(template: str, image: str = "quay.io/oauth2-proxy/oauth2-proxy:v7.15.6"):
+    return _proxy_trust_offenders({"auth": {"proxyImage": image}}, {"deployment.yaml": template})
+
+
+def test_the_unfixed_shape_is_refused() -> None:
+    offenders = _trust(_SKIPPING_PROXY, "quay.io/oauth2-proxy/oauth2-proxy:v7.7.1")
+    assert any("no --trusted-proxy-ip" in o for o in offenders)
+    assert any("predates 7.15.2" in o for o in offenders)
+
+
+def test_the_fixed_shape_passes() -> None:
+    assert _trust(_SKIPPING_PROXY + _GUARDED_TRUST) == []
+
+
+def test_a_new_release_without_the_flag_still_fails() -> None:
+    assert any("no --trusted-proxy-ip" in o for o in _trust(_SKIPPING_PROXY))
+
+
+def test_an_unguarded_templated_list_fails() -> None:
+    unguarded = _SKIPPING_PROXY + "            - --trusted-proxy-ip={{ .Values.cidr }}\n"
+    assert any("nothing refuses an unset list" in o for o in _trust(unguarded))
+
+
+def test_trusting_every_address_fails() -> None:
+    assert any("trusts every address" in o for o in _trust(_SKIPPING_PROXY + "            - --trusted-proxy-ip=0.0.0.0/0\n"))
+
+
+def test_a_repository_and_tag_pair_is_judged() -> None:
+    values = {"auth": {"oidc": {"image": {"repository": "quay.io/oauth2-proxy/oauth2-proxy", "tag": "v7.15.5"}}}}
+    offenders = _proxy_trust_offenders(values, {"deployment.yaml": _SKIPPING_PROXY + _GUARDED_TRUST})
+    assert offenders == []
+    values["auth"]["oidc"]["image"]["tag"] = "v7.7.1"
+    assert any("auth.oidc.image.tag" in o for o in _proxy_trust_offenders(values, {"deployment.yaml": _SKIPPING_PROXY + _GUARDED_TRUST}))
+
+
+def test_a_proxy_that_skips_nothing_is_vacuous() -> None:
+    no_skip = _SKIPPING_PROXY.replace("            - --skip-auth-route=^/mcp(/|$)\n", "")
+    assert _trust(no_skip, "quay.io/oauth2-proxy/oauth2-proxy:v7.7.1") is None
+
+
+def test_a_comment_never_satisfies_the_trust_flag() -> None:
+    commented = _sans_comments(_SKIPPING_PROXY + "            # - --trusted-proxy-ip={{ . }}  fail trustedProxyIPs\n")
+    assert any("no --trusted-proxy-ip" in o for o in _trust(commented))
