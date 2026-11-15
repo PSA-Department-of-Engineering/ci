@@ -323,6 +323,21 @@ jobs:
             echo 'More than one release tag appeared on this commit.' >&2
             exit 1
           fi
+          # A re-run of a release job that tagged this commit and then died before
+          # it pushed (a runner shut down mid-job) finds the tag already here, so the
+          # engine cuts nothing and the version would stay tagged but unpublished
+          # forever. On a re-run, the release tag this commit already carries is
+          # the version to publish.
+          if [ -z "$NEW_TAG" ] && [ "${GITHUB_RUN_ATTEMPT:-1}" -gt 1 ]; then
+            NEW_TAG=$(grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' /tmp/tags-before || true)
+            if [ "$(printf '%s\n' "$NEW_TAG" | grep -c . || true)" -gt 1 ]; then
+              echo 'More than one release tag already points at this commit.' >&2
+              exit 1
+            fi
+            if [ -n "$NEW_TAG" ]; then
+              echo "Re-run: publishing ${NEW_TAG}, already tagged on this commit."
+            fi
+          fi
           if [ -n "$NEW_TAG" ]; then
             echo "new_release_published=true" >> "$GITHUB_OUTPUT"
             echo "new_release_version=${NEW_TAG#v}" >> "$GITHUB_OUTPUT"
