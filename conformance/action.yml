@@ -15,7 +15,7 @@
 # it shares with the csd-intent audit). Secrets do not reach a composite action on
 # their own: the platform read token arrives as an input.
 name: Per-app conformance suite
-description: Judge one app checkout against the chart-side INT-FOUNDRY claims (REF-Foundry section 4).
+description: Judge one app checkout against the chart-side INT-FOUNDRY claims (REF-AppContract section 4).
 
 inputs:
   app-name:

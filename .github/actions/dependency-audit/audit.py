@@ -3,7 +3,7 @@ the advisories its optional root accepted-advisories.yaml accepts.
 
 A bundle is a tracked package-lock.json (npm), or a pyproject.toml with a
 [project] table or a requirements.txt (Python). Discovery skips the docs site
-(REF-Foundry section 4: the docs bundle is not the bar) and test harnesses
+(REF-AppContract section 4: the docs bundle is not the bar) and test harnesses
 (tests/, test/, fixtures/, e2e*/).
 
 npm bundles are audited with `npm audit --omit=dev`, counting high and critical

@@ -1,4 +1,4 @@
-# The chart-side per-app claims of the REF-Foundry section 4 app contract
+# The chart-side per-app claims of the REF-AppContract section 4 app contract
 # (CSD-INTENT-01 schema), attested by conformance/test_repo_conformance.py
 # and run by the shared build workflow in each app's own CI. The
 # install-side claims stay in the platform repo beside its own suite.
@@ -127,13 +127,13 @@ INT-FOUNDRY-018:
   criticality: high
 
 # --- conventional-commit hook conformance (ADR-024); a RepoStandard claim that the
-# --- app-repo contract (REF-Foundry section 4) now includes, numbered after docs base ---
+# --- app-repo contract (REF-AppContract section 4) now includes, numbered after docs base ---
 
 INT-FOUNDRY-019:
   version: 1.0.0
   status: active
   statement: "Every deploy repo MUST commit a .pre-commit-config.yaml carrying a Conventional-Commit check at the commit-msg stage, so the commit convention the version scheme reads (ADR-024) is guarded locally from a fresh clone rather than left to discipline."
-  rationale: "Image and chart versions are computed from Conventional Commits by semantic-release (ADR-024); a malformed message silently yields no release. A committed, bypassable commit-msg hook gives every contributor the same fast local check from a fresh clone, scaffolded once (REF-Foundry section 4) rather than hand-copied per repo. Only the config is committed and testable: the .git/hooks install is per-clone (`pre-commit install`) and not version-controlled, so conformance asserts the config that defines the hook, never its installation."
+  rationale: "Image and chart versions are computed from Conventional Commits by semantic-release (ADR-024); a malformed message silently yields no release. A committed, bypassable commit-msg hook gives every contributor the same fast local check from a fresh clone, scaffolded once (REF-AppContract section 4) rather than hand-copied per repo. Only the config is committed and testable: the .git/hooks install is per-clone (`pre-commit install`) and not version-controlled, so conformance asserts the config that defines the hook, never its installation."
   test:
     scope: integration
     component: RepoStandard
@@ -192,7 +192,7 @@ INT-FOUNDRY-029:
     type: invariant
   criticality: high
 
-# --- Operational pause conformance (REF-Foundry section 4); a RepoStandard claim that the
+# --- Operational pause conformance (REF-AppContract section 4); a RepoStandard claim that the
 # --- platform can scale an onboarded app to zero without offboarding it (ADR-030) ---
 
 INT-FOUNDRY-030:
@@ -206,7 +206,7 @@ INT-FOUNDRY-030:
     type: invariant
   criticality: high
 
-# --- App-facing SSO conformance (REF-Foundry; ADR-031): the realm-per-app
+# --- App-facing SSO conformance (REF-AppContract section 3; ADR-031): the realm-per-app
 # --- identity contract, the counterpart of the database isolation claims (014..017) ---
 
 INT-FOUNDRY-034:
@@ -235,7 +235,7 @@ INT-FOUNDRY-039:
   version: 1.1.0
   status: active
   statement: "No app workflow MAY provide an npm registry token itself (assign NODE_AUTH_TOKEN). The @psa-department-of-engineering packages are published to the public npm registry, so installing them needs no credential at all; an app that sets the variable is wiring a credential nothing asks for."
-  rationale: "The token counterpart of the build thin-caller rule (INT-FOUNDRY-013). A delivery's build phase once hand-wrote a bespoke ci.yml that set a NODE_AUTH_TOKEN secret which did not exist; CI failed closed and the phase degraded. The invariant outlived its original reason: the packages moved to public npm (csd-library ADR-0003), so there is no longer a credential to centralize - reading them is anonymous. Asserting that the app never sets the token variable, rather than banning particular spellings, closes the gap robustly and now also catches the stale wiring left over from the GitHub Packages era (ADR-019, REF-Foundry section 4)."
+  rationale: "The token counterpart of the build thin-caller rule (INT-FOUNDRY-013). A delivery's build phase once hand-wrote a bespoke ci.yml that set a NODE_AUTH_TOKEN secret which did not exist; CI failed closed and the phase degraded. The invariant outlived its original reason: the packages moved to public npm (csd-library ADR-0003), so there is no longer a credential to centralize - reading them is anonymous. Asserting that the app never sets the token variable, rather than banning particular spellings, closes the gap robustly and now also catches the stale wiring left over from the GitHub Packages era (ADR-019, REF-AppContract section 4)."
   test:
     scope: integration
     component: RepoStandard
@@ -353,7 +353,7 @@ INT-FOUNDRY-063:
   version: 1.0.0
   status: active
   statement: "An app repo MUST carry .github/workflows/test.yml, and it MUST run on pull_request. The suite inside is the app's own (pytest, vitest, Playwright); the file's existence and its PR trigger are the contract."
-  rationale: "build.yml is a thin caller so release and publish cannot drift, but a test suite is genuinely per-app and has nothing to share - which is exactly why nothing ensured one existed. REF-Foundry section 4 asserted the scaffold dropped a test.yml; it did not, and no check noticed, so six app repos ran no CI on a pull request at all. That is only visible once a repo is public: an outside contributor's PR would be merged with nothing having run against it. The scaffold now ships the file (with the intent audit, the one gate every app repo has by contract) and this claim keeps it there."
+  rationale: "build.yml is a thin caller so release and publish cannot drift, but a test suite is genuinely per-app and has nothing to share - which is exactly why nothing ensured one existed. REF-AppContract section 4 asserted the scaffold dropped a test.yml; it did not, and no check noticed, so six app repos ran no CI on a pull request at all. That is only visible once a repo is public: an outside contributor's PR would be merged with nothing having run against it. The scaffold now ships the file (with the intent audit, the one gate every app repo has by contract) and this claim keeps it there."
   test:
     scope: integration
     component: RepoStandard
