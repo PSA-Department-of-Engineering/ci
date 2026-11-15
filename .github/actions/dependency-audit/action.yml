@@ -1,5 +1,5 @@
 # The org's dependency gate: every npm and Python bundle a repo ships, audited for
-# known advisories. The app bundle must audit clean (REF-Foundry section 4); the docs
+# known advisories. The app bundle must audit clean (REF-AppContract section 4); the docs
 # bundle is not the bar and is not audited. audit.py beside this file says what a
 # bundle is and what counts as a finding.
 #

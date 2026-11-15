@@ -69,7 +69,7 @@ on:
         default: ''
       app-contract:
         description: >-
-          Audit the repo against the REF-Foundry section 4 app contract (and run
+          Audit the repo against the REF-AppContract section 4 app contract (and run
           csd-intent on its intent.yaml) before releasing. Onboardable apps leave this
           true; the docs-only platform portal sets it false.
         type: boolean
@@ -119,7 +119,7 @@ on:
 # through unchanged.
 
 jobs:
-  # REF-Foundry section 4: the onboardable-app repo contract. The authoritative
+  # REF-AppContract section 4: the onboardable-app repo contract. The authoritative
   # per-app suite is conformance/ in THIS repo (pytest + intent markers), run
   # here in each app's own CI, where the app is checked out; the platform repo
   # keeps only the install-side suite (its deploy-* branches), which an app
@@ -169,7 +169,7 @@ jobs:
       # checkout, no token of the caller's, the same whether this repository is
       # public or private (conformance/action.yml says why).
       - if: ${{ inputs.app-contract }}
-        name: Per-app conformance suite (REF-Foundry section 4)
+        name: Per-app conformance suite (REF-AppContract section 4)
         uses: PSA-Department-of-Engineering/ci/conformance@main
         with:
           app-name: ${{ inputs.app-name }}
