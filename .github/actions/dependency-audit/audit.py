@@ -25,6 +25,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -167,13 +168,20 @@ def npm_findings(bundle: Bundle, report: dict) -> list[Finding]:
 
 
 def run_pip_audit(root: Path, bundle: Bundle) -> dict:
+    """pip-audit's JSON report for one bundle. Its cache is a private directory of this
+    run, never one under $HOME: platformdirs refuses a home another user can write to
+    (the ARC runners' /home/runner), and pip-audit dies before printing a report."""
     target = ["-r", bundle.source] if PurePosixPath(bundle.source).name == "requirements.txt" else [bundle.directory]
-    proc = subprocess.run(
-        [sys.executable, "-m", "pip_audit", "-f", "json", "--progress-spinner", "off", *target],
-        cwd=root,
-        capture_output=True,
-        text=True,
-    )
+    with tempfile.TemporaryDirectory(prefix="pip-audit-cache-") as cache:
+        proc = subprocess.run(
+            [
+                sys.executable, "-m", "pip_audit", "-f", "json", "--progress-spinner", "off",
+                "--cache-dir", cache, *target,
+            ],
+            cwd=root,
+            capture_output=True,
+            text=True,
+        )
     try:
         return json.loads(proc.stdout)
     except json.JSONDecodeError:

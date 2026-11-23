@@ -192,8 +192,32 @@ def test_the_audits_run_on_production_dependencies(tmp_path, monkeypatch):
     audit.run_pip_audit(tmp_path, audit.Bundle('pypi', 'svc', 'svc/requirements.txt'))
     (npm, npm_cwd), (project, _), (requirements, _) = calls
     assert npm[1:] == ['audit', '--omit=dev', '--json'] and npm_cwd == tmp_path / 'web'
-    assert project[1:] == ['-m', 'pip_audit', '-f', 'json', '--progress-spinner', 'off', 'api']
+    assert project[1:6] == ['-m', 'pip_audit', '-f', 'json', '--progress-spinner']
+    assert project[-1] == 'api'
     assert requirements[-2:] == ['-r', 'svc/requirements.txt']
+
+
+def test_pip_audit_caches_in_a_private_directory_of_its_own(tmp_path, monkeypatch):
+    # A home another user can write to (the ARC runners' /home/runner) makes platformdirs
+    # refuse pip-audit's default cache, so the audit hands it a private one per run.
+    loose_home = tmp_path / 'home'
+    loose_home.mkdir()
+    loose_home.chmod(0o777)
+    monkeypatch.setenv('HOME', str(loose_home))
+    seen = {}
+
+    def fake_run(args, **kwargs):
+        cache = Path(args[args.index('--cache-dir') + 1])
+        seen['cache'] = cache
+        seen['exists'] = cache.is_dir()
+        seen['mode'] = cache.stat().st_mode & 0o777
+        return audit.subprocess.CompletedProcess(args, 0, stdout='{"dependencies": []}', stderr='')
+
+    monkeypatch.setattr(audit.subprocess, 'run', fake_run)
+    assert audit.run_pip_audit(tmp_path, audit.Bundle('pypi', 'api', 'api/pyproject.toml')) == {'dependencies': []}
+    assert seen['exists'] and seen['mode'] & 0o077 == 0
+    assert loose_home not in seen['cache'].parents
+    assert not seen['cache'].exists()
 
 
 def fake_npm(monkeypatch, *answers):
