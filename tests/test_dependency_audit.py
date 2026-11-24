@@ -192,7 +192,7 @@ def test_the_audits_run_on_production_dependencies(tmp_path, monkeypatch):
     audit.run_pip_audit(tmp_path, audit.Bundle('pypi', 'svc', 'svc/requirements.txt'))
     (npm, npm_cwd), (project, _), (requirements, _) = calls
     assert npm[1:] == ['audit', '--omit=dev', '--json'] and npm_cwd == tmp_path / 'web'
-    assert project[1:6] == ['-m', 'pip_audit', '-f', 'json', '--progress-spinner']
+    assert project[1:8] == ['-m', 'pip_audit', '-f', 'json', '--progress-spinner', 'off', '--cache-dir']
     assert project[-1] == 'api'
     assert requirements[-2:] == ['-r', 'svc/requirements.txt']
 

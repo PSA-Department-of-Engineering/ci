@@ -315,10 +315,13 @@ jobs:
           set -euo pipefail
           # Only release tags on this commit identify this build. The engine
           # also fetches unrelated tags, including delivery markers.
-          git tag --points-at HEAD --list 'v[0-9]*' > /tmp/tags-before
+          before_tags=$(mktemp)
+          after_tags=$(mktemp)
+          trap 'rm -f "$before_tags" "$after_tags"' EXIT
+          git tag --points-at HEAD --list 'v[0-9]*' > "$before_tags"
           npx -y -p semantic-release@24 -p conventional-changelog-conventionalcommits@8 semantic-release
-          git tag --points-at HEAD --list 'v[0-9]*' > /tmp/tags-after
-          NEW_TAG=$(comm -13 <(sort /tmp/tags-before) <(sort /tmp/tags-after) | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true)
+          git tag --points-at HEAD --list 'v[0-9]*' > "$after_tags"
+          NEW_TAG=$(comm -13 <(sort "$before_tags") <(sort "$after_tags") | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true)
           if [ "$(printf '%s\n' "$NEW_TAG" | grep -c . || true)" -gt 1 ]; then
             echo 'More than one release tag appeared on this commit.' >&2
             exit 1
@@ -329,7 +332,7 @@ jobs:
           # forever. On a re-run, the release tag this commit already carries is
           # the version to publish.
           if [ -z "$NEW_TAG" ] && [ "${GITHUB_RUN_ATTEMPT:-1}" -gt 1 ]; then
-            NEW_TAG=$(grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' /tmp/tags-before || true)
+            NEW_TAG=$(grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' "$before_tags" || true)
             if [ "$(printf '%s\n' "$NEW_TAG" | grep -c . || true)" -gt 1 ]; then
               echo 'More than one release tag already points at this commit.' >&2
               exit 1
@@ -362,8 +365,7 @@ jobs:
             echo "    Write role (package -> Package settings -> Manage Actions access)."
             echo "    Changing a repo's visibility drops these grants, so re-check every"
             echo "    package the repo publishes after flipping it public or private."
-            echo "    Fix the grant, then push a release-cutting commit - re-running"
-            echo "    this job republishes nothing once the tag exists."
+            echo "    Restore the package grant, then re-run the failed release job."
           }
           push_image() {
             docker push "$1" && return 0
