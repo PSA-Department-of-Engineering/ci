@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://github.com/PSA-Department-of-Engineering/ci/.github/actions/dependency-audit/accepted-advisories.schema.json",
+    "$id": "https://api.github.com/repos/PSA-Department-of-Engineering/ci/contents/.github/actions/dependency-audit/accepted-advisories.schema.json",
     "title": "Accepted advisories",
     "description": "The advisories a repository accepts in the dependency audit: each one has no fix the repository can take, and does not affect the repository. Each entry carries the fields of a VEX not_affected statement, in VEX's names and justification values; its status, not_affected, is implied by its place in this file. The file is accepted-advisories.yaml at the repository root; absent, nothing is accepted.",
     "type": "array",
