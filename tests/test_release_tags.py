@@ -4,6 +4,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import pytest
 import yaml
 
 
@@ -30,3 +31,8 @@ def test_release_ignores_fetched_delivery_and_historical_tags(tmp_path):
     assert 'new_release_version=1.12.0' in result
     assert 'delivered' not in result
     assert run(':') == 'new_release_published=false\n'
+    env['GITHUB_RUN_ATTEMPT'] = '2'
+    with pytest.raises(subprocess.CalledProcessError):
+        run(':')  # Two release tags on the same commit are ambiguous.
+    git('tag', '-d', 'v1.10.0')
+    assert 'new_release_version=1.12.0' in run(':')
