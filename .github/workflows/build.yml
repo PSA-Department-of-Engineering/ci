@@ -8,7 +8,7 @@
 # platform repo (docs-only) and a full app share one workflow. CI never deploys:
 # promotion is ArgoCD Image Updater (ADR-022).
 #
-# Before any release, a conformance job runs the per-app conformance suite from
+# Before any release, the gates job runs the per-app conformance suite from
 # this repo's conformance/ directory (the single home of the chart-side
 # INT-FOUNDRY claims: devops/, k8s/, docs/ honoring DOCS_BASE, README sections,
 # .env.example, intent.yaml, route and identity bindings) and audits the app's
@@ -119,18 +119,31 @@ on:
 # through unchanged.
 
 jobs:
-  # REF-AppContract section 4: the onboardable-app repo contract. The authoritative
-  # per-app suite is conformance/ in THIS repo (pytest + intent markers), run
-  # here in each app's own CI, where the app is checked out; the platform repo
-  # keeps only the install-side suite (its deploy-* branches), which an app
-  # runner cannot read (the platform repo is private and the org token reads
-  # packages only). One suite, one home: a hand-mirrored copy of the checks in
-  # this workflow is the drift that let 17 claims go unenforced. release `needs`
-  # this, so a non-conformant repo is never tagged or published. The docs-only
-  # platform portal is not an onboardable app: it passes app-contract: false,
-  # which skips every step below. The job still runs and succeeds (no executed
-  # step fails), so its release proceeds.
-  conformance:
+  # The four gates a release waits on, in ONE job: every job is a fresh runner that checks
+  # out and sets up from nothing, and the org's runners are few, so four small jobs cost
+  # four queue slots and four setups for a minute of checking each. Each gate still runs
+  # (a later one runs even when an earlier one failed, so a red run names every failure)
+  # and the job fails when any of them does.
+  #
+  # 1. REF-AppContract section 4: the onboardable-app repo contract. The authoritative per-app
+  #    suite is conformance/ in THIS repo (pytest + intent markers), run here in each app's
+  #    own CI, where the app is checked out; the platform repo keeps only the install-side
+  #    suite (its deploy-* branches), which an app runner cannot read. One suite, one home:
+  #    a hand-mirrored copy of the checks in this workflow is the drift that let 17 claims
+  #    go unenforced. The docs-only platform portal is not an onboardable app: it passes
+  #    app-contract: false, which skips these steps.
+  # 2. The org's two commit invariants (Conventional-Commits subject + no co-author
+  #    trailer): semantic-release derives the version from the subject type, so a
+  #    malformed subject silently ships nothing. Every repo, the portal included.
+  # 3. The org's secrets gate: a pushed commit that introduces a credential fails the run.
+  #    Every repo, the portal included.
+  # 4. The org's dependency gate: every npm and Python bundle the repo ships, audited for
+  #    known advisories, with the ones a repo accepts recorded in its root
+  #    accepted-advisories.yaml (the composite says what counts). A repo with no bundles
+  #    outside docs/ has nothing to audit and passes.
+  # release `needs` this job, so a non-conformant repo, a bad commit, a leaked secret or an
+  # unaccepted advisory is never tagged or published.
+  gates:
     runs-on: ${{ github.event.repository.fork && 'ubuntu-latest' || inputs.runner }}
     permissions:
       contents: read
@@ -184,42 +197,20 @@ jobs:
           # PLATFORM_READ_TOKEN narrows the blast radius when minted.
           platform-read-token: ${{ secrets.PLATFORM_READ_TOKEN || secrets.PACKAGES_READ_TOKEN }}
 
-  # The org's two commit invariants (Conventional-Commits subject + no co-author
-  # trailer), enforced where every release flows: semantic-release derives the version
-  # from the subject type, so a malformed subject silently ships nothing. Unlike
-  # conformance this applies to EVERY repo, including the docs-only portal, so it is
-  # independent of app-contract. release needs it, so a bad commit is never released.
-  commit-hygiene:
-    runs-on: ${{ github.event.repository.fork && 'ubuntu-latest' || inputs.runner }}
-    permissions:
-      contents: read
-    steps:
-      - uses: PSA-Department-of-Engineering/ci/.github/actions/check-commit-hygiene@main
+      - name: Commit hygiene
+        if: ${{ !cancelled() }}
+        uses: PSA-Department-of-Engineering/ci/.github/actions/check-commit-hygiene@main
 
-  # The org's secrets gate: fail the run when a pushed commit introduces a credential.
-  # Like commit-hygiene this applies to EVERY repo, including the docs-only portal, so it
-  # is independent of app-contract. release needs it, so a leaked secret is never released.
-  secrets-scan:
-    runs-on: ${{ github.event.repository.fork && 'ubuntu-latest' || inputs.runner }}
-    permissions:
-      contents: read
-    steps:
-      - uses: PSA-Department-of-Engineering/ci/.github/actions/secrets-scan@main
+      - name: Secrets scan
+        if: ${{ !cancelled() }}
+        uses: PSA-Department-of-Engineering/ci/.github/actions/secrets-scan@main
 
-  # The org's dependency gate: every npm and Python bundle the repo ships, audited for
-  # known advisories, with the ones a repo accepts recorded in its root
-  # accepted-advisories.yaml (the composite says what counts). It applies to every repo:
-  # one with no bundles outside docs/ has nothing to audit and passes. release `needs`
-  # it, so a repo carrying an unaccepted advisory is never tagged or published.
-  dependency-audit:
-    runs-on: ${{ github.event.repository.fork && 'ubuntu-latest' || inputs.runner }}
-    permissions:
-      contents: read
-    steps:
-      - uses: PSA-Department-of-Engineering/ci/.github/actions/dependency-audit@main
+      - name: Dependency audit
+        if: ${{ !cancelled() }}
+        uses: PSA-Department-of-Engineering/ci/.github/actions/dependency-audit@main
 
   # Never releases from a pull request: a PR head is a candidate, not a version. The
-  # four gates above are safe to run on one (both commit gates already resolve a
+  # gates above are safe to run on one (both commit gates already resolve a
   # pull_request's range against its base), so a caller that wires `pull_request:`
   # gets conformance, hygiene, the secrets scan and the audit as PR checks while
   # tag, GitHub release, and every GHCR push stay on the push-to-main path
@@ -232,7 +223,7 @@ jobs:
   # one-shot merge gate folds into green rather than unknown.
   release:
     if: github.event_name != 'pull_request'
-    needs: [conformance, commit-hygiene, secrets-scan, dependency-audit]
+    needs: [gates]
     runs-on: ${{ github.event.repository.fork && 'ubuntu-latest' || inputs.runner }}
     env:
       # The registry is a value, not an assumption (the platform's #164): an
