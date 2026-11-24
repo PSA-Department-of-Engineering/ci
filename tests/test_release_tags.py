@@ -36,3 +36,29 @@ def test_release_ignores_fetched_delivery_and_historical_tags(tmp_path):
         run(':')  # Two release tags on the same commit are ambiguous.
     git('tag', '-d', 'v1.10.0')
     assert 'new_release_version=1.12.0' in run(':')
+
+
+def test_retry_preserves_existing_versions_and_stops_on_an_unreadable_registry(tmp_path):
+    workflow = yaml.safe_load((Path(__file__).parents[1] / '.github/workflows/build.yml').read_text())
+    build = next(s['run'] for s in workflow['jobs']['release']['steps'] if s.get('name') == 'Build and push image(s), chart, docs')
+    functions = build[build.index('missing_on_retry()'):build.index('# cycjimmy/')]
+    harness = r"""
+docker() {
+    test "$1 $2 $3 $4" = "buildx imagetools inspect ghcr.io/example/package:1.2.0" || return 3
+    case "$REGISTRY_RESULT" in
+        present) return 0;;
+        missing) echo "manifest unknown" >&2; return 1;;
+        unavailable) echo "registry temporarily unavailable" >&2; return 1;;
+    esac
+}
+publish() { echo "$1" > published; }
+"""
+    bash = shutil.which('bash') if os.name != 'nt' else str(Path(shutil.which('git')).parents[1] / 'bin/bash.exe')
+    marker = tmp_path / 'published'
+    for result, expected_status, expected_publish in [('present', 0, False), ('missing', 0, True), ('unavailable', 2, False)]:
+        response = subprocess.run([bash, '-ec', harness + functions + '\npublish_version ghcr.io/example/package:1.2.0 publish release'],
+                                  cwd=tmp_path, env={**os.environ, 'REGISTRY_RESULT': result, 'GITHUB_RUN_ATTEMPT': '2'},
+                                  capture_output=True)
+        assert response.returncode == expected_status, response.stderr
+        assert marker.exists() is expected_publish
+        marker.unlink(missing_ok=True)

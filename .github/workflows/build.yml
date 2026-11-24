@@ -367,10 +367,32 @@ jobs:
             echo "    package the repo publishes after flipping it public or private."
             echo "    Restore the package grant, then re-run the failed release job."
           }
+          # Existing version tags are immutable on a retry. Only a missing manifest may be published.
+          missing_on_retry() {
+            if [ "${GITHUB_RUN_ATTEMPT:-1}" -le 1 ]; then return 0; fi
+            local output
+            if output=$(docker buildx imagetools inspect "$1" 2>&1); then
+              echo "Retaining published $1" >&2
+              return 1
+            fi
+            if printf '%s\n' "$output" | grep -Eiq 'manifest unknown|no such manifest|: not found$|404 Not Found'; then
+              return 0
+            fi
+            printf 'Could not verify registry manifest %s: %s\n' "$1" "$output" >&2
+            return 2
+          }
+          publish_version() {
+            local target="$1" status
+            shift
+            if missing_on_retry "$target"; then
+              "$@" || { grant_refused; return 1; }
+            else
+              status=$?
+              if [ "$status" -ne 1 ]; then return "$status"; fi
+            fi
+          }
           push_image() {
-            docker push "$1" && return 0
-            grant_refused
-            return 1
+            publish_version "$1" docker push "$1"
           }
           # cycjimmy/semantic-release-action unconditionally deletes the workspace
           # .npmrc when it finishes (its cleanupNpmrc task, which guards the action's
@@ -439,13 +461,22 @@ jobs:
             DOCKER_BUILDKIT=1 docker build -f docs/Dockerfile \
               --build-arg DOCS_BASE="$BASE" -t "$REG/$APP-docs:$VERSION" docs/
             push_image "$REG/$APP-docs:$VERSION"
-            docker tag "$REG/$APP-docs:$VERSION" "$REG/$APP-docs:latest"
-            push_image "$REG/$APP-docs:latest"
+            # Retrying an older commit must not roll the latest docs back.
+            if [ "${GITHUB_RUN_ATTEMPT:-1}" -le 1 ] || [ "$(git ls-remote origin "$GITHUB_REF" | cut -f1)" = "$GITHUB_SHA" ]; then
+              if [ "${GITHUB_RUN_ATTEMPT:-1}" -gt 1 ]; then docker pull "$REG/$APP-docs:$VERSION"; fi
+              docker tag "$REG/$APP-docs:$VERSION" "$REG/$APP-docs:latest"
+              docker push "$REG/$APP-docs:latest" || { grant_refused; exit 1; }
+            fi
           fi
 
           # --- Helm chart (chart name comes from k8s/Chart.yaml; helm reads the
           # docker credential store, same token, same grant rule). ---
           if [ -d k8s ]; then
-            helm package k8s --version "$VERSION" --app-version "$VERSION" -d /tmp
-            helm push /tmp/*.tgz "oci://$REG/charts" || { grant_refused; exit 1; }
+            package_dir=$(mktemp -d)
+            helm package k8s --version "$VERSION" --app-version "$VERSION" -d "$package_dir"
+            packages=("$package_dir"/*.tgz)
+            [ "${#packages[@]}" -eq 1 ] && [ -f "${packages[0]}" ] || exit 1
+            filename=${packages[0]##*/}
+            chart=${filename%-$VERSION.tgz}
+            publish_version "$REG/charts/$chart:$VERSION" helm push "${packages[0]}" "oci://$REG/charts"
           fi
