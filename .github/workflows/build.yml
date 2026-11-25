@@ -67,6 +67,10 @@ on:
         description: Base path for the docs site. Empty defaults to /apps/<app name>; the platform portal passes "/".
         type: string
         default: ''
+      docs-origin:
+        description: Public HTTPS origin used for canonical URLs and sitemaps.
+        type: string
+        default: 'https://docs.psaengineering.dev'
       app-contract:
         description: >-
           Audit the repo against the REF-AppContract section 4 app contract (and run
@@ -339,11 +343,18 @@ jobs:
             echo "new_release_published=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Build and validate the documentation image
+        if: steps.release.outputs.new_release_published == 'true' && hashFiles('docs/Dockerfile') != ''
+        uses: PSA-Department-of-Engineering/ci/.github/actions/build-docs@main
+        with:
+          base: ${{ inputs.docs-base || format('/apps/{0}', env.APP) }}
+          site: ${{ inputs.docs-origin }}
+          image: foundry-docs-build:${{ github.run_id }}-${{ github.run_attempt }}
+
       - name: Build and push image(s), chart, docs
         if: steps.release.outputs.new_release_published == 'true'
         env:
           VERSION: ${{ steps.release.outputs.new_release_version }}
-          DOCS_BASE: ${{ inputs.docs-base }}
         run: |
           set -euo pipefail
 
@@ -445,12 +456,7 @@ jobs:
           # --- The portal's /apps/ index renders from the install manifest inside the
           # --- platform chart (ADR-032), so no registry rides into the docs build. ---
           if [ -f docs/Dockerfile ]; then
-            BASE="${DOCS_BASE:-/apps/$APP}"
-            # No build secret: docs/Dockerfile's `npm ci` pulls
-            # @psa-department-of-engineering/* from the public npm registry
-            # (csd-library ADR-0003), which needs no credential.
-            DOCKER_BUILDKIT=1 docker build -f docs/Dockerfile \
-              --build-arg DOCS_BASE="$BASE" -t "$REG/$APP-docs:$VERSION" docs/
+            docker tag "foundry-docs-build:$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" "$REG/$APP-docs:$VERSION"
             push_image "$REG/$APP-docs:$VERSION"
             # Retrying an older commit must not roll the latest docs back.
             if [ "${GITHUB_RUN_ATTEMPT:-1}" -le 1 ] || [ "$(git ls-remote origin "$GITHUB_REF" | cut -f1)" = "$GITHUB_SHA" ]; then
