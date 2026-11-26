@@ -70,3 +70,9 @@ One-time repo settings the caller needs: **Settings → Actions → General → 
 
   Each entry carries the fields of a VEX not_affected statement, in VEX's names and justification values; its status, not_affected, is implied. `accepted-advisories.schema.json` beside the composite defines the file, and every run checks it. The gate **fails closed**: a bundle the audit cannot read, and a setup step that errors, refuse the release exactly as an unaccepted advisory does, because a bundle whose state is unknown is not a bundle known to be clean.
 - Pin callers to `@main`; these workflows are versioned by this repo's history.
+
+## Publish an engineering book independently
+
+An app can call `.github/workflows/publish-documentation.yml` from its own `.github/workflows/documentation.yml` on default-branch changes to `docs/**` or the caller itself. Add `workflow_dispatch` for an operator-initiated republish. Give the caller `contents: read` and `packages: write`, and pass the same fleet and image names as the app's release.
+
+The publisher verifies the book at its portal origin, publishes a source-specific `docs-<commit>` tag, then advances `docs-current` to that digest if the book and its caller still match the default branch. Its job summary records both references. The runtime app images, Helm chart and published application releases are outside this workflow. A docs component that tracks `docs-current` by digest can adopt a new book independently.
