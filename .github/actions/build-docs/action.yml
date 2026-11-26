@@ -1,0 +1,37 @@
+name: Build a documentation image
+description: Build the app's documentation with its public origin and verify the generated links before publication.
+inputs:
+  base:
+    description: Mount path of the engineering book
+    required: true
+  site:
+    description: Public HTTPS origin of the documentation portal
+    required: true
+  image:
+    description: Local image tag unique to the workflow run
+    required: true
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Build and verify the book
+      shell: bash
+      env:
+        DOCS_BASE: ${{ inputs.base }}
+        SITE_URL: ${{ inputs.site }}
+        IMAGE: ${{ inputs.image }}
+      run: |
+        set -euo pipefail
+        DOCKER_BUILDKIT=1 docker build -f docs/Dockerfile \
+          --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+          --label "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+          --label "foundry.docs.origin=$SITE_URL" --label "foundry.docs.base=$DOCS_BASE" \
+          --build-arg DOCS_BASE="$DOCS_BASE" --build-arg SITE_URL="$SITE_URL" \
+          -t "$IMAGE" docs/
+        site_root=$(mktemp -d)
+        container=$(docker create "$IMAGE")
+        trap 'docker rm "$container" >/dev/null' EXIT
+        docker cp "$container:/usr/share/nginx/html${DOCS_BASE%/}/." "$site_root/"
+        python "$GITHUB_ACTION_PATH/verify.py" "$site_root" "$SITE_URL"

@@ -1,0 +1,96 @@
+name: Publish documentation
+
+on:
+  workflow_call:
+    inputs:
+      app-name:
+        description: Fleet name used in the portal path
+        type: string
+        required: true
+      image-name:
+        description: Existing package prefix when it differs from the fleet name
+        type: string
+        default: ''
+      docs-base:
+        description: Mount path for installations with a custom route
+        type: string
+        default: ''
+      docs-origin:
+        description: HTTPS origin of the installation's documentation portal
+        type: string
+        default: https://docs.psaengineering.dev
+      runner:
+        type: string
+        default: arc-dind
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: publish-documentation-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  publish:
+    if: github.ref_name == github.event.repository.default_branch && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Sign in to the package registry
+        env:
+          REGISTRY_PASSWORD: ${{ github.token }}
+          REGISTRY_USER: ${{ github.actor }}
+        run: printf '%s' "$REGISTRY_PASSWORD" | docker login ghcr.io -u "$REGISTRY_USER" --password-stdin
+      - name: Build and check the book
+        uses: PSA-Department-of-Engineering/ci/.github/actions/build-docs@main
+        with:
+          base: ${{ inputs.docs-base || format('/apps/{0}', inputs.app-name) }}
+          site: ${{ inputs.docs-origin }}
+          image: foundry-book:${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Publish the source image and current book
+        shell: bash
+        env:
+          OWNER: ${{ github.repository_owner }}
+          PACKAGE: ${{ inputs.image-name || inputs.app-name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          LOCAL_IMAGE: foundry-book:${{ github.run_id }}-${{ github.run_attempt }}
+          SITE_URL: ${{ inputs.docs-origin }}
+          DOCS_BASE: ${{ inputs.docs-base || format('/apps/{0}', inputs.app-name) }}
+        run: |
+          set -euo pipefail
+          [[ "$PACKAGE" =~ ^[a-z0-9]+([._-][a-z0-9]+)*$ ]]
+          image="ghcr.io/${OWNER,,}/$PACKAGE-docs"
+          source="$image:docs-$GITHUB_SHA"
+          # A rerun keeps the first image already published for this commit.
+          if output=$(docker manifest inspect "$source" 2>&1); then
+            docker pull "$source"
+            revision=$(docker inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$source")
+            [[ "$revision" == "$GITHUB_SHA" ]]
+            origin=$(docker inspect --format '{{ index .Config.Labels "foundry.docs.origin" }}' "$source")
+            mount=$(docker inspect --format '{{ index .Config.Labels "foundry.docs.base" }}' "$source")
+            [[ "$origin" == "$SITE_URL" && "$mount" == "$DOCS_BASE" ]]
+          elif [[ "$output" == *"manifest unknown"* || "$output" == *"no such manifest"* ]]; then
+            docker tag "$LOCAL_IMAGE" "$source"
+            docker push "$source"
+          else
+            printf '%s\n' "$output" >&2
+            exit 1
+          fi
+          digest=$(docker buildx imagetools inspect "$source" --format '{{.Manifest.Digest}}')
+          [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+          printf '%s\n' "$source@$digest" >> "$GITHUB_STEP_SUMMARY"
+          git fetch --no-tags origin "$DEFAULT_BRANCH"
+          # Other product changes can land while this builds. Only a newer book or publisher supersedes it.
+          if ! git diff --quiet "$GITHUB_SHA" FETCH_HEAD -- docs .github/workflows/documentation.yml; then
+            echo 'A newer documentation revision owns the current channel.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          docker tag "$source" "$image:docs-current"
+          docker push "$image:docs-current"
+          current=$(docker buildx imagetools inspect "$image:docs-current" --format '{{.Manifest.Digest}}')
+          [[ "$current" == "$digest" ]]
+          printf '%s\n' "$image:docs-current@$current" >> "$GITHUB_STEP_SUMMARY"
